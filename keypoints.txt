@@ -1,1 +1,5 @@
 differential 3s as a controller
+Baysian learning (update belief)
+decision on timing and action, please refer to Konark's paper
+How the simulator get price and volume
+Self-exciting with new orders
