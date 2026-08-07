@@ -1,0 +1,280 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+
+\newcommand{\sspp}{\textsc{ss2p2}}
+\newcommand{\lgm}{\textsc{lgm}}
+\newcommand{\Fano}{F}
+
+\title{Closing the Dispersion Gap in Neural Limit-Order-Book Simulators:\\
+Findings from the August 2026 Fano Investigation}
+\author{Honglin Fu}
+\date{August 4--8, 2026 \quad (lab findings; source material for the market-making world-model paper)}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We investigate why neural marked-temporal-point-process (MTPP) simulators of Coinbase
+limit-order-book flow under-disperse relative to real markets, using the Fano factor
+profile $\Fano(\Delta)=\mathrm{Var}(N_\Delta)/\mathbb{E}[N_\Delta]$ across bucket scales
+$\Delta\in[1,50]$\,s as the headline statistic. Across ten experimental arms on three
+assets we establish: (i) the bounded-rate \sspp{} head is not reliably self-exciting
+--- its measured impulse response is sign-inconsistent and saturated at the intensity
+ceiling; (ii) one-step maximum likelihood systematically misallocates excitation
+spectra (three independent demonstrations); (iii) extending the TBPTT gradient horizon
+to cover the measured scales transforms the simulated dispersion profile (all BTC seeds
+rise $\times$15--32, best within $1.6\times$ of real at 50\,s); (iv) at equal training
+budget, dispersion peaks \emph{early} and prediction accuracy peaks \emph{late} along a
+single MLE trajectory --- the prediction/simulation tension exists within one training
+run; and (v) the remaining level offset is dominated by ceiling saturation (a third of
+events occur at the cap; teacher-forced dispersion is only $1.2$--$1.4\times$ low).
+We relate every finding to the calibration methodology of Jain et al.\ (Compound
+Hawkes), whose binned-count regression targets exactly the cross-scale count
+covariances that MLE ignores, and derive a ranked roadmap toward a dispersion-faithful,
+certified world model for market making.
+\end{abstract}
+
+\section{Framing: two identities}
+
+All arguments in this note reduce to two identities. First, the \emph{Cox
+decomposition} (law of total variance given the intensity path $\lambda(t)$, with
+$\Lambda_\Delta=\int_{\text{bucket}}\lambda\,dt$):
+\begin{equation}
+\Fano(\Delta) \;=\; 1+\frac{\mathrm{Var}(\Lambda_\Delta)}{\mathbb{E}[\Lambda_\Delta]},
+\label{eq:cox}
+\end{equation}
+so all excess dispersion is variance of the integrated intensity; a post-hoc rate
+rescaling $\lambda\!\to\!\kappa\lambda$ scales $\Fano-1$ linearly and cannot repair
+relative fluctuation structure. Second, the \emph{branching form} for a linear Hawkes
+process with branching ratio $n$: cluster sizes $S$ satisfy $\mathbb{E}[S]=1/(1-n)$ and
+$\mathbb{E}[S^2]=1/(1-n)^3$, hence
+\begin{equation}
+\Fano(\infty)\;=\;\frac{\mathbb{E}[S^2]}{\mathbb{E}[S]}\;=\;\frac{1}{(1-n)^2}.
+\label{eq:branching}
+\end{equation}
+The profile's \emph{rise} across $\Delta$ is the fingerprint of long-memory (power-law-like)
+intensity autocovariance; single-exponential kernels plateau.
+
+Real Coinbase flow (7 days, Jan 2026): $\Fano(1\text{s})\approx 40$--$70$ rising to
+$\Fano(50\text{s})\approx 370$ (SOL), $1250$ (ETH), $1460$ (BTC), still rising at the
+window edge. Inverting \eqref{eq:branching} gives implied branching (lower bounds):
+SOL $\approx 0.948$, ETH $\approx 0.971$, BTC $\approx 0.973$ --- the
+$1/(1-n)^2$ amplification makes this small spread a $4\times$ dispersion difference.
+
+\section{Data and the tick-regime contrast}
+
+\begin{table}[h]\centering\small
+\begin{tabular}{lrrrrr}
+\toprule
+ & trades (7d) & book rows & rows/trade & rate (ev/s) & IS share \\
+\midrule
+BTC & 41{,}675 & 52.9M & 1268:1 & 40.6 & 52\% \\
+ETH & 94{,}048 & 55.5M & 590:1 & 42.8 & 34\% \\
+SOL & 40{,}048 & 20.1M & 501:1 & 22.3 & 7\% \\
+\bottomrule
+\end{tabular}
+\caption{Raw Coinbase spot data, 2026-01-01..07, and the event-type composition of the
+processed 62-channel streams. BTC/ETH are small-tick assets dominated by inside-spread
+(IS) quote wars --- the most self-exciting flow; SOL is effectively large-tick
+(1-tick spread, queue churn: 43\% cancels). The tick regime, not just the rate,
+drives the criticality ordering.}
+\label{tab:assets}
+\end{table}
+
+\section{Mechanism: the bounded head is not reliably self-exciting}
+
+\sspp{} factorizes intensity into a softmin-bounded scalar rate
+$\lambda(t)=s\cdot\mathrm{softplus}\!\big(c-\mathrm{softplus}(c-w^\top h(u))\big)
+\le s\cdot\mathrm{softplus}(c)$ and rate-neutral softmax marks. The stability
+certificate bounds the rate \emph{level}; nothing constrains the event$\to$intensity
+feedback. Measuring the feedback directly (inject one extra event into real histories;
+integrate the extra intensity mass over 20\,s) across six trained checkpoints: median
+response $\approx 0$ \emph{to negative} ($-8.7\ldots+0.2$), positive in only
+27--56\% of states, sign flipping across seeds; post-event intensity pinned at the
+ceiling in every window. The model's residual dispersion comes from a stereotyped
+impulse--decay envelope, not compounding cascades. In Hawkes terms:
+\emph{a settable branching ratio is a property of linear-in-history intensity; for a
+bounded neural head it is not even well defined.}
+
+\section{Experimental arms}
+
+Protocol throughout (the \texttt{ma\_cbse} benchmark): 62-channel events, TBPTT,
+categorical marks, streaming genuine evaluation on every test event, validation-
+calibrated 600\,s rollouts, 3 training $\times$ 3 rollout seeds per asset.
+
+\subsection{Negative and structural results}
+\begin{itemize}
+\item \textbf{Book conditioning is not the lever} (\texttt{ss2p2-lob}): six
+top-10-ladder features left prediction unchanged (BTC 0.4484 vs 0.4478) and made
+closed-loop volatility structure \emph{worse} (F6 $0.16$ vs $0.28$) --- extra state
+conditioning becomes a smoothing feedback path in rollout.
+\item \textbf{\lgm{}} (linear Hawkes ground $\times$ \sspp{} marks on the shared
+backbone; $n=\sum_m a_m/\beta_m$ exact and projected; pin $\mu_0=R(1-n)$): the pin
+holds in free rollout ($\kappa=1.01$ vs \sspp{}'s $0.52$); marks near parity; Fano
+\emph{shape} right with seed spread $\pm 2$ (vs \sspp{} $\pm 217$) but level low.
+Two porting lessons: a log-domain clamp silently capped the burst accumulators
+(excitation useless to MLE until fixed); and \textbf{zero cold-starts of the ground
+are catastrophically biased} --- the stationary mean is $\mathbb{E}[S^m]=R/\beta_m$
+($\approx 600$ for slow kernels), so windowed validation punished slow-memory
+solutions and froze best-model selection at epoch~1. Fix: stationary-mean cold start.
+\item \textbf{MLE misallocates spectra} (three demonstrations): the fixed \lgm{}
+pushed kernel mass to its slowest decay; the typed-kick $M{=}6$, $n{=}0.97$ arm
+(\texttt{lgm-k}) went slower still ($\beta\!\approx\!0.008$, $\sim$2-min memory),
+\emph{lowering} observed-scale Fano despite the higher ceiling; the dispersion-loss
+arm (below) pinned only the scales in its grid. One-step likelihood is structurally
+blind to $\Fano(\Delta)$ and, given capacity, prefers slow smooth intensity.
+\item \textbf{Teacher-forced variance matching $\ne$ closed-loop compounding}
+(\texttt{ss2p2-disp}): an auxiliary loss matching model-implied
+$1+\mathrm{Var}(\Lambda_\Delta)/\mathbb{E}[\Lambda_\Delta]$ to the batch-empirical
+Fano at $\{0.5,2,8\}$\,s pinned those scales reproducibly (seed sd $\pm14$ vs
+$\pm217$) at zero prediction cost --- and went flat beyond its grid.
+\end{itemize}
+
+\subsection{The window-coverage result}
+
+At seq 1024 the TBPTT gradient truncates at $\sim$24--25\,s on BTC/ETH --- before the
+20--50\,s scales where their simulated profiles flatten; SOL's $\sim$46\,s windows
+cover the range (and produced real-like rises in 2/3 seeds). Extending to seq 4096
+($\sim$100\,s windows; recipe otherwise identical):
+
+\begin{table}[h]\centering\small
+\begin{tabular}{lccc}
+\toprule
+BTC, per seed & seq 1024 (12 ep) & seq 4096 (12 ep) & real \\
+\midrule
+$\Fano(50\text{s})$, s1/s2/s3 & 29 / 50 / 361 & \textbf{901 / 270 / 744} & 1463 \\
+rise $\Fano(50)/\Fano(1)$ & $\times$2.5--13.9 & $\times$15--32 & $\times$20.9 \\
+\bottomrule
+\end{tabular}
+\caption{Window coverage transforms the profile: all three BTC seeds rise steeply
+(best within $1.6\times$ of real). ETH: 2/3 seeds transformed. SOL: unchanged ---
+the clean negative control. The BTC ``seed lottery'' was gradient starvation at
+unobserved scales.}
+\label{tab:w4k}
+\end{table}
+
+\begin{figure}[h]\centering
+\includegraphics[width=\textwidth]{figs/fano_w4k.png}
+\caption{Per-seed Fano-vs-scale (log--log): black = real, blue = seq-1024 baseline,
+red = seq-4096. BTC: the whole seed family moves; SOL: negative control.}
+\label{fig:w4k}
+\end{figure}
+
+\subsection{Equal-budget controls: the training-path trade-off}
+
+Matched stride quarters updates per epoch, so seq-4096/12-epoch runs were undertrained
+($-3$pp accuracy). Controls at 48 epochs (exact update parity with the baseline):
+
+\begin{table}[h]\centering\small
+\begin{tabular}{lccl}
+\toprule
+BTC arm & acc & $\Fano(1\text{s})$ & $\Fano(50\text{s})$ per seed \\
+\midrule
+base 1024 / 12 ep & 0.4478 & 17.1 & 29, 50, 361 \\
+w4k 4096 / 12 ep & 0.4183 & 24.3 & \textbf{901, 270, 744} \\
+w4k48 4096 / 48 ep & \textbf{0.4514} & 16.6 & 232, 87, 230 \\
+w4kd + disp loss / 48 ep & \textbf{0.4519} & 11.1 & 52, 43, 43 \\
+real & --- & 70.0 & 1463 \\
+\bottomrule
+\end{tabular}
+\caption{Equal-updates controls. Accuracy fully recovers and exceeds baseline; the
+extra training walks the model partly away from the burst-faithful solution.
+The dispersion loss under cap 6 suppresses long-scale Fano, as predicted by the
+saturation diagnostic.}
+\label{tab:controls}
+\end{table}
+
+\noindent\textbf{Finding (the sharpest form of the arc's core lesson).} Along a
+single MLE trajectory, \emph{dispersion peaks early and accuracy peaks late}; no
+NLL-selected checkpoint has both. The prediction/simulation tension is a property of
+the training path, not only of architectures. The 12-epoch w4k checkpoints constitute
+a de-facto dispersion-optimal early stop; a paper can honestly present the frontier.
+
+\subsection{Where the residual level offset lives}
+
+Diagnostics on the w4k BTC checkpoint: (i) \textbf{ceiling saturation} --- dominating
+rate 359 ev/s; event-time intensity $p_{90}=357$, $p_{99}=358$; \textbf{32.8\% of
+events above $0.9\times$ceiling}: bursts are clipped and gradients (including any
+dispersion loss) are dead there; (ii) \textbf{teacher-forced dispersion} is only
+$1.2$--$1.4\times$ below real at every scale (e.g.\ 50\,s: 240 vs 290). Conditioned on
+real history the model carries $\sim$75\% of real dispersion; the cap, then modest
+closed-loop drift, accounts for the rest. The cap-9 control
+(\texttt{ss2p2-w4kc9}, in flight) tests whether headroom changes the MLE optimum
+itself.
+
+\section{The Jain (Compound Hawkes) reference point}
+
+Jain's simulator never optimizes or reports the Fano factor; dispersion is scored via
+volatility signature plots and $|r|$-autocorrelation, and his own signature plots
+undershoot empirical levels by $2$--$3\times$ --- the published state of the art also
+misses level while matching shape. What his pipeline gets structurally right:
+\begin{enumerate}
+\item \textbf{Estimation by binned-count regression} (Kirchner-style, lin--log lag
+grid): binning turns the Hawkes process into a vector autoregression on lagged counts
+whose coefficients are the kernel integrals; the fitting target \emph{is} the
+cross-scale count autocovariance --- the integrand of $\Fano(\Delta)$. Moments, not
+MLE; the spectrum cannot be misallocated relative to dispersion.
+\item Power-law kernels selected by AIC 100\% of the time (straight log--log point
+estimates over six decades of lag, $10^{-4}$--$10^{2}$\,s).
+\item Kernel-norm matrix eigenvalue capped at 1 by rescaling (his projection);
+inhibitory cross-kernels retained.
+\item Baselines derived, not fitted: $\mu=(\mathbb{I}-M)\Lambda$ --- the matrix form
+of \lgm{}'s pin.
+\item Compound order sizes (Dirac spikes at round numbers + geometric); the
+constant-size ablation is wrong by $\sim$$100\times$ on price variance. Time-of-day
+multipliers throughout.
+\end{enumerate}
+
+\paragraph{The RL chapter's acceptance checklist.} His market-making chapter converts
+stylized facts into functional requirements, ranked by agent ablations: (1)
+\emph{clustered arrivals as the agent's observable} --- removing Hawkes intensities
+from the RL state flips Sharpe $+31.5\to-20/-51$, the most catastrophic ablation; (2)
+\emph{queue dynamics} --- removing relative queue position yields pump-and-dump or
+unprofitable policies; (3) \emph{arbitrage-consistent impact memory} --- exponential
+kernels admit dynamic arbitrage that the optimizer finds ("pump \& dump"), rarely so
+under power-law: mis-specified memory manufactures fake alpha; (4)
+\emph{responsiveness} --- spread widening, queue depletion, liquidity regeneration in
+reaction to the agent; (5) spread mean-reversion via spread-dependent in-spread
+intensities ($\propto (s-1)^{0.75}$, $R^2=0.85$); (6) realistic frictions (strategies
+collapse beyond 2\,bps). Items (3)--(4) require genuine self-excitation --- absent in
+our measured \sspp{} checkpoints --- making the dispersion program a prerequisite for
+the agent phase, not an aesthetic.
+
+\section{Conclusions}
+
+\begin{enumerate}
+\item Prediction and simulation are different objectives; one-step MLE is blind to,
+and given capacity misallocates, the spectrum controlling $\Fano(\Delta)$.
+\item The TBPTT gradient horizon must cover the measured scales: the cheapest large
+win found (BTC 3/3 seeds transformed).
+\item Along one training run, dispersion peaks early and accuracy late; no
+NLL-selected checkpoint dominates.
+\item The rate ceiling is the current level bottleneck (a third of events saturated;
+teacher-forced dispersion nearly right).
+\item Certified dispersion requires linear-in-history structure: only \lgm{} has a
+settable $n$, a pinned mean rate, and closed-form $\Fano(\Delta)$ at any horizon;
+the Kirchner regression is the proven recipe for fitting its ground (typed, per
+asset) to cross-scale covariances post hoc, marks untouched.
+\item Per-asset targets are mandatory ($n$: 0.948 vs 0.973 is a $4\times$ Fano
+difference); the tick regime (IS share) should shape typed-kick priors.
+\end{enumerate}
+
+\paragraph{Roadmap.} (1) cap-9 control (in flight); (2) Kirchner binned-regression
+fit of the \lgm{} ground; (3) \lgm{} ground $\times$ bounded neural gate
+($\rho_{\text{eff}}\le n\,G_{\max}$) to restore timing without breaking the
+certificate; (4) time-of-day multiplier; (5) exploitability audit before trusting any
+policy trained in the simulator.
+
+\vspace{1em}
+\noindent\small\textit{Provenance: experiments under
+\texttt{peacock:\textasciitilde/simulation/experiments/ma\_cbse/}; code
+\texttt{honglinfu98/simulation} commits \texttt{7b97b21..88d22cc}; full lab log in
+\texttt{docs/fano\_investigation\_2026-08.md} of this repository.}
+
+\end{document}
