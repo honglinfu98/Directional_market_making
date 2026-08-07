@@ -142,11 +142,45 @@ control below). Figures: `docs/figs/fano_w4k.png`, `docs/figs/fano_three_assets.
 not an amplitude-learning failure. Next lever: cap 9 on the w4k48 recipe (12 was
 calibration-fragile; 6 is clipping a third of events).
 
-### 4.7 In flight (as of 2026-08-07)
-- `ss2p2-w4k48` (job 7142407): equal-updates control — 48 epochs at seq 4096 matches
-  the baseline's total update count. Reads: does accuracy recover while Fano holds?
-- `ss2p2-w4kd` (job 7142411): w4k + dispersion loss with grid {0.5,2,8,32} s, 48 epochs,
-  cap 6 (serves as "loss alone vs cap alone" contrast given 4.6).
+### 4.7 The equal-updates controls (completed 2026-08-07/08) — the training-path
+trade-off
+
+`ss2p2-w4k48` (seq 4096, 48 epochs = the baseline's exact total update count) and
+`ss2p2-w4kd` (same + dispersion loss, grid {0.5,2,8,32} s). BTC four-way (per-seed
+F(50s); real 70 → 1463):
+
+| arm | acc | F(1s) | F(50s) per seed |
+|---|---|---|---|
+| base 1024/12ep | 0.4478 | 17.1 | 29, 50, 361 |
+| w4k 4096/12ep | 0.4183 | 24.3 | **901, 270, 744** |
+| w4k48 4096/48ep | **0.4514** | 16.6 | 232, 87, 230 |
+| w4kd +disp/48ep | **0.4519** | 11.1 | 52, 43, 43 |
+
+Findings (same pattern on ETH/SOL with their usual seed lottery; one ETH w4kd
+outlier at 852):
+1. **Accuracy fully recovers and exceeds baseline** at equal updates on every asset
+   (BTC 0.4514, ETH 0.3451, SOL 0.1950) — the w4k drop was pure undertraining, and
+   long windows are strictly better predictors at matched budget.
+2. **The near-real w4k dispersion was partly an early-stopping artifact**: 4x more
+   updates pulled BTC back from [901,270,744] to [232,87,230] (still ~3x the seq-1024
+   baseline). Sharpest form of the arc's core lesson: **along one model's MLE
+   trajectory, dispersion peaks early and accuracy peaks late — no NLL-selected
+   checkpoint has both.** The prediction/simulation tension exists within a single
+   training run, not just across architectures. (The w4k 12-epoch checkpoints are
+   the de-facto "dispersion-optimal early stop"; a paper can present the frontier.)
+3. **The dispersion loss under cap 6 suppresses long-scale Fano** (BTC w4kd: flat
+   43–52, tightly converged) — as predicted by the saturation diagnostic (§4.6): its
+   gradient is dead on the ~33% of events at the ceiling, and its teacher-forced
+   targets prefer the smooth solution beyond genuinely-compounding scales. Best
+   accuracy of all arms; the "loss alone" path to dispersion is closed.
+
+### 4.8 In flight
+- `ss2p2-w4kc9` (job 7148914): cap 9 + w4k48 recipe. Tests whether ceiling headroom
+  changes the MLE optimum itself (hypothesis: the 48-epoch re-smoothing is caused by
+  saturation making burst-faithful intensity unprofitable for the likelihood). If
+  Fano holds at 48 epochs with cap 9 → the SS2P2 recipe is complete; if not → the
+  dispersion/accuracy frontier is intrinsic to bounded-head MLE and the certified
+  LGM/Kirchner route is the paper's answer.
 
 ## 5. The Jain (Konark) reference point
 
@@ -196,7 +230,7 @@ Sources: impulse-control paper (arXiv 2510.26438), Compound-Hawkes FRL paper
 
 ## 7. Ranked roadmap
 
-1. `ss2p2-w4kc9`: w4k48 + cap 9 (evidence-backed level lever).
+1. `ss2p2-w4kc9`: w4k48 + cap 9 (evidence-backed level lever; RUNNING, job 7148914).
 2. Kirchner binned-regression fit of the LGM ground (typed, per asset) — "set, don't
    learn"; closed-form F(Δ) checked against real at all horizons before any GPU.
 3. GMH-lite: LGM ground × bounded neural gate g(u) — restores timing NLL/backbone
