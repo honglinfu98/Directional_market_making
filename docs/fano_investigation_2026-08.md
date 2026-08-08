@@ -199,6 +199,41 @@ dispersion-optimal SS2P2 is the seq-4096/12-epoch early stop (BTC F(50s) up to 9
 1.6x under real), and no NLL-selected checkpoint matches it; (c) the certified
 LGM/Kirchner route is the paper's answer for *controlled* dispersion.
 
+### 4.9 The closing result: Kirchner-fitted LGM (`lgm-kf`, SOL, 2026-08-08)
+
+"Set, don't learn," executed: the LGM ground's kernel weights were fitted by
+Kirchner-style binned-count regression on the real SOL train zones
+(`scripts/kirchner_fit_lgm.py`: 0.25 s bins, lin-log lag grid to 240 s → cell
+integrals Φ_k by OLS → NNLS projection onto a fixed log-spaced 6-exponential bank;
+measured raw branching 0.9635, capped n = 0.99; μ₀ by the pin). The fitted spectrum
+is *balanced* — 0.80 of the branching on β = 18.2 s⁻¹ plus a genuine slow tail —
+exactly the allocation MLE never found. The fitted ground was transplanted into the
+three trained SOL mark checkpoints (rate-neutral marks untouched) and run through
+the full eval pipeline (job 7149220, all verified, κ = 1.014):
+
+| SOL | Fano [1,2,5,10,20,50]s | sd@50s | acc | time-NLL | time-KS |
+|---|---|---|---|---|---|
+| ss2p2-full | 15.0 → 238.4 | ±217 | 0.1921 | −2.911 | 0.173 |
+| lgm (MLE ground) | 2.3 → 59.8 | ±2 | 0.1862 | −2.227 | 0.464 |
+| **lgm-kf** | **31.1, 46.5, 80.3, 125.7, 207.7, 422.9** | **±0.0** | 0.1860 | **−3.035** | 0.228 |
+| real | 41.3, 54.7, 85.6, 125.3, 198.7, 393.6 | | | | |
+
+Findings:
+1. **Near-exact dispersion in full closed loop**: exact at 10 s, within 5–7% at
+   20/50 s, within 6% at 5 s; only 1–2 s modestly low. The ground-only validation
+   survived marks + calibration + rollout intact.
+2. **Zero seed variance**: dispersion is a deterministic function of six fitted
+   parameters; the marks cannot perturb it (rate-neutrality confirmed operationally).
+3. **Moment fitting beat MLE on likelihood itself**: time-NLL −3.035 is the best in
+   the zoo — better than SS2P2's neural rate head (−2.911) and 0.8 nats better than
+   the MLE-trained ground (−2.227); time-KS 0.464 → 0.228. Windowed MLE was stuck in
+   a bad spectral optimum that the count regression simply computes past.
+4. Cost: a 3-minute CPU fit. No GPU training for the ground at all.
+
+This closes the investigation's central question. Remaining: replicate on BTC/ETH
+(near-critical, IS-dominated — the typed-kick extension's real test), and the
+short-scale (1–2 s) residual, plausibly type-dependence of kicks.
+
 ## 5. The Jain (Konark) reference point
 
 Sources: impulse-control paper (arXiv 2510.26438), Compound-Hawkes FRL paper

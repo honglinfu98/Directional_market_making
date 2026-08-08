@@ -220,6 +220,103 @@ configuration is the seq-4096/12-epoch early stop, presented as a frontier point
 rather than a converged recipe, and controlled dispersion belongs to the certified
 \lgm{}/Kirchner route.
 
+\subsection{The closing result: the Kirchner-fitted \lgm{} (\texttt{lgm-kf})}
+
+Executing ``set, don't learn'': the \lgm{} ground's kernel weights were fitted by
+binned-count regression on the real SOL train zones and transplanted into the trained
+mark checkpoints (marks untouched). Full pipeline results (calibration verified,
+$\kappa=1.014$):
+
+\begin{table}[h]\centering\small
+\begin{tabular}{lccccc}
+\toprule
+SOL & $\Fano$ [1,2,5,10,20,50]\,s & sd@50s & acc & time-NLL & time-KS \\
+\midrule
+\sspp{}-full & $15.0 \to 238.4$ & $\pm 217$ & 0.1921 & $-2.911$ & \textbf{0.173} \\
+\lgm{} (MLE ground) & $2.3 \to 59.8$ & $\pm 2$ & 0.1862 & $-2.227$ & 0.464 \\
+\textbf{\lgm{}-kf} & \textbf{31.1, 46.5, 80.3, 125.7, 207.7, 422.9} & $\pm$\textbf{0.0} & 0.1860 & $\mathbf{-3.035}$ & 0.228 \\
+real & 41.3, 54.7, 85.6, 125.3, 198.7, 393.6 & --- & --- & --- & --- \\
+\bottomrule
+\end{tabular}
+\caption{The Kirchner-fitted ground survives the full closed loop: exact at 10\,s,
+within 5--7\% at 20/50\,s, zero seed variance (dispersion is a deterministic function
+of six fitted parameters), and --- unexpectedly --- the best timing likelihood in the
+zoo: moment fitting beat MLE on likelihood's own metric, because windowed MLE was
+stuck in a bad spectral optimum the count regression computes past. Fit cost: three
+CPU minutes.}
+\label{tab:kf}
+\end{table}
+
+BTC/ETH replication (grounds fitted per asset; branching tuned to each asset's
+empirical Fano curve by log-MSE: BTC $n{=}0.98$, ETH $n{=}0.985$; ground-only
+validation within a few \% on ETH, within ${\sim}40\%$ on the more power-law-like
+BTC) is in flight as \texttt{lgm-kf} on those assets.
+
+\section{The model: Kirchner-fitted \lgm{}, complete specification}
+\label{sec:model}
+
+\paragraph{Event stream and factorization.} Events $(t_i,k_i)$,
+$k_i\in\{1,\dots,K{=}62\}$. Channel intensities factorize as
+\begin{equation}
+\lambda_k(t) \;=\; \Lambda(t)\cdot p(k\mid u(t)),\qquad
+\textstyle\sum_k p(k\mid u)=1,
+\end{equation}
+so the total rate $\sum_k\lambda_k=\Lambda$ is untouched by the mark model
+(\emph{rate-neutrality}): all count statistics --- mean rate, $\Fano(\Delta)$, the
+whole law of $N_\Delta$ --- depend on the ground alone. This is what licenses
+fitting the ground post hoc and explains the observed zero seed variance.
+
+\paragraph{Ground.} A scalar linear Hawkes with an $M$-exponential kernel bank,
+\begin{equation}
+\Lambda(t)=\mu_0+\sum_{m=1}^{M} a_m S^m(t),\qquad
+S^m(t)=\sum_{t_i<t} e^{-\beta_m (t-t_i)},\quad a_m\ge 0,
+\end{equation}
+with recursion $S^m(t_i^+)=S^m(t_i^-)+1$, decay $S^m(t{+}\Delta)=e^{-\beta_m\Delta}S^m(t)$,
+closed-form compensator over a gap $\Delta_i$
+\begin{equation}
+\int_{t_{i-1}}^{t_i}\!\Lambda\,dt=\mu_0\Delta_i+\sum_m \tfrac{a_m}{\beta_m}
+S^m(t_{i-1}^+)\big(1-e^{-\beta_m\Delta_i}\big),
+\end{equation}
+exact branching $n=\sum_m a_m/\beta_m$, stationary mean rate $\mathbb{E}[\Lambda]=
+\mu_0/(1-n)$, pinned baseline $\mu_0:=R(1-n)$ (so the free-rollout mean rate equals
+the measured train rate $R$ identically), and stationary cold start
+$\mathbb{E}[S^m]=R/\beta_m$ wherever no carried state exists.
+
+\paragraph{Ground estimation (Kirchner).} Bin total counts at width $\delta$:
+$X_n=N((n{-}1)\delta,n\delta]$. The Hawkes conditional mean is linear in lagged
+counts,
+\begin{equation}
+\mathbb{E}[X_n\mid\mathcal{F}_{n-1}]\;\approx\;\delta\mu+\sum_{j\ge 1}
+\phi(j\delta)\,\delta\,X_{n-j},
+\end{equation}
+so aggregating lags into lin--log cells $[\ell_c,h_c)$ and solving OLS (normal
+equations accumulated per day, burn-in one max-lag) yields cell integrals
+$\Phi_c=\int_{\ell_c}^{h_c}\phi$. Projection onto the fixed bank is a non-negative
+least squares in $a$:
+\begin{equation}
+\Phi_c=\sum_m \frac{a_m}{\beta_m}\Big(e^{-\beta_m\ell_c}-e^{-\beta_m h_c}\Big)
+\;\Longrightarrow\; a=\mathrm{NNLS}(A,\Phi),\quad
+A_{cm}=\tfrac{1}{\beta_m}(e^{-\beta_m\ell_c}-e^{-\beta_m h_c}).
+\end{equation}
+The estimator's target is the cross-scale count autocovariance --- the integrand of
+$\Fano(\Delta)$ via \eqref{eq:cox} --- so the spectrum cannot be misallocated
+relative to dispersion. A final one-dimensional moment match tunes $n$ (global
+rescale of $a$) to the empirical Fano curve by log-MSE, validated by exact cluster
+simulation of the ground (immigrants $\sim$ Poisson($\mu_0$); each event spawns
+Poisson($a_m/\beta_m$) children at $\mathrm{Exp}(\beta_m)$ delays per bank element).
+
+\paragraph{Marks.} $p(k\mid u)=\mathrm{softmax}(\mathrm{MLP}(u))_k$ with $u(t)$ the
+LayerNormed output of the shared 2-layer diagonal-SSM (S2P2) backbone, trained by
+cross-entropy under MLE (TBPTT); the simplex constraint makes arbitrary mark depth
+free of stability or dispersion consequences.
+
+\paragraph{Likelihood and simulation.} Exact log-likelihood
+$\sum_i[\log\Lambda(t_i^-)+\log p(k_i\mid u(t_i^-))]-\int\Lambda$, with the
+compensator in closed form. Simulation by inversion (or thinning with the dynamic
+bound: between events every $S^m$ decays, so the current $\Lambda$ is an exact
+dominating rate). Post-hoc rate calibration is retained protocol-side and lands
+$\kappa\approx 1$ by the pin.
+
 \section{The Jain (Compound Hawkes) reference point}
 
 Jain's simulator never optimizes or reports the Fano factor; dispersion is scored via
