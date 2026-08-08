@@ -230,9 +230,29 @@ Findings:
    a bad spectral optimum that the count regression simply computes past.
 4. Cost: a 3-minute CPU fit. No GPU training for the ground at all.
 
-This closes the investigation's central question. Remaining: replicate on BTC/ETH
-(near-critical, IS-dominated — the typed-kick extension's real test), and the
-short-scale (1–2 s) residual, plausibly type-dependence of kicks.
+This closes the investigation's central question.
+
+**BTC/ETH replication (job 7149357, 2026-08-08):** grounds fitted per asset and
+n tuned to each empirical Fano curve (BTC 0.98, ETH 0.985):
+
+| | Fano [1,2,5,10,20,50]s | sd@50s | vs real |
+|---|---|---|---|
+| ETH lgm-kf | 51.9, 81.0, 141.8, 219.9, 346.8, 629.8 | 0.0 | real 60.7 → 1247 |
+| BTC lgm-kf | 77.0, 118.2, 188.3, 258.6, 344.5, 526.1 | 1.5 | real 70.0 → 1463 |
+
+Replicated: short-scale match unprecedented (BTC 1–2 s essentially exact — no prior
+arm within 2.5×), determinism (sd ≤ 1.5), best-in-zoo time-NLL (−3.64/−3.43), and
+ETH's 50 s value beats every prior ETH arm with zero variance. Not replicated: at
+20–50 s both assets deliver ~50–55% of the standalone ground simulation's prediction
+at the same parameters (SOL matched its prediction exactly). Since the transplanted
+law is identical, this is a closed-loop/estimator protocol discrepancy specific to
+the near-critical high-rate regime (leading suspect: the tuner's pooled-replica
+count variance vs the pipeline's equal-duration segment matching, which partially
+absorbs the slow-cluster component). **Defined fix: tune n against the pipeline's
+own estimator** (run tuner candidates through stylized_facts directly) — expected
+to push BTC/ETH to n ≈ 0.985–0.99 under the pipeline's measure and recover the
+50 s tail. Open residuals: that retune, and the short-scale type-dependence
+(typed kicks) refinement.
 
 ## 5. The Jain (Konark) reference point
 
