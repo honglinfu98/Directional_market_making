@@ -204,9 +204,21 @@ events above $0.9\times$ceiling}: bursts are clipped and gradients (including an
 dispersion loss) are dead there; (ii) \textbf{teacher-forced dispersion} is only
 $1.2$--$1.4\times$ below real at every scale (e.g.\ 50\,s: 240 vs 290). Conditioned on
 real history the model carries $\sim$75\% of real dispersion; the cap, then modest
-closed-loop drift, accounts for the rest. The cap-9 control
-(\texttt{ss2p2-w4kc9}, in flight) tests whether headroom changes the MLE optimum
-itself.
+closed-loop drift, accounts for the rest.
+
+\subsection{The cap-9 control: hypothesis refuted, branch closed}
+
+The cap-9 control (\texttt{ss2p2-w4kc9}: cap $6\!\to\!9$ on the w4k48 recipe; nine
+tasks, all calibrations verified) tested whether ceiling headroom changes the MLE
+optimum itself. It does not: $\Fano(50\text{s})$ per seed \emph{fell} relative to
+cap~6 (BTC: $47/59/112$ vs $232/87/230$; ETH: $160/14/60$ vs $544/51/123$) at
+identical accuracy. \textbf{The training-path re-smoothing is intrinsic to
+bounded-head likelihood training, not caused by saturation} (which remains the
+correct account of the early-stopped model's \emph{rollout} clipping). Per the
+pre-registered decision rule, the \sspp{} branch closes: its dispersion-optimal
+configuration is the seq-4096/12-epoch early stop, presented as a frontier point
+rather than a converged recipe, and controlled dispersion belongs to the certified
+\lgm{}/Kirchner route.
 
 \section{The Jain (Compound Hawkes) reference point}
 

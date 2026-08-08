@@ -174,13 +174,30 @@ outlier at 852):
    targets prefer the smooth solution beyond genuinely-compounding scales. Best
    accuracy of all arms; the "loss alone" path to dispersion is closed.
 
-### 4.8 In flight
-- `ss2p2-w4kc9` (job 7148914): cap 9 + w4k48 recipe. Tests whether ceiling headroom
-  changes the MLE optimum itself (hypothesis: the 48-epoch re-smoothing is caused by
-  saturation making burst-faithful intensity unprofitable for the likelihood). If
-  Fano holds at 48 epochs with cap 9 → the SS2P2 recipe is complete; if not → the
-  dispersion/accuracy frontier is intrinsic to bounded-head MLE and the certified
-  LGM/Kirchner route is the paper's answer.
+### 4.8 The cap-9 control (completed 2026-08-08) — hypothesis refuted, branch closed
+
+`ss2p2-w4kc9` (cap 9 + w4k48 recipe, 9 tasks, all STATUS=0, all calibrations
+verified — no fragility at 9). F(50s) per seed vs the cap-6 w4k48 control:
+
+| | cap 6 (w4k48) | cap 9 (w4kc9) | real |
+|---|---|---|---|
+| BTC | 232, 87, 230 | 47, 59, 112 | 1463 |
+| ETH | 544, 51, 123 | 160, 14, 60 | 1247 |
+| SOL | 301, 68, 81 | 228, 10, 59 | 394 |
+
+Accuracy identical (BTC 0.451, ETH 0.346, SOL 0.195). **The saturation hypothesis
+for the training-path re-smoothing is refuted**: extra headroom does not keep
+48-epoch MLE at the burst-faithful solution — if anything the fully-trained optimum
+is smoother with a looser cap. The drift is intrinsic to bounded-head likelihood
+training. (Ceiling saturation remains the correct explanation for the *rollout
+clipping* of the early-stopped w4k model — the two findings coexist.)
+
+**Per the pre-registered decision rule, the SS2P2 branch closes here.** Its final
+exhibits: (a) the window-coverage result (§4.5) — gradient horizon must cover the
+measured scales; (b) the training-path dispersion/accuracy frontier (§4.7) — the
+dispersion-optimal SS2P2 is the seq-4096/12-epoch early stop (BTC F(50s) up to 901,
+1.6x under real), and no NLL-selected checkpoint matches it; (c) the certified
+LGM/Kirchner route is the paper's answer for *controlled* dispersion.
 
 ## 5. The Jain (Konark) reference point
 
