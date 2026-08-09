@@ -252,70 +252,205 @@ empirical Fano curve by log-MSE: BTC $n{=}0.98$, ETH $n{=}0.985$; ground-only
 validation within a few \% on ETH, within ${\sim}40\%$ on the more power-law-like
 BTC) is in flight as \texttt{lgm-kf} on those assets.
 
-\section{The model: Kirchner-fitted \lgm{}, complete specification}
+\section{The model: Kirchner-fitted \lgm{} (\texttt{lgm-kf2}), complete specification}
 \label{sec:model}
 
-\paragraph{Event stream and factorization.} Events $(t_i,k_i)$,
-$k_i\in\{1,\dots,K{=}62\}$. Channel intensities factorize as
+This section specifies the champion model exactly as run, with every equation,
+constant, and fitted value. Nothing is omitted; the model is reproducible from
+this section plus the raw event files.
+
+\subsection{Data interface}
+The input is a marked point process $\{(t_i,k_i)\}_{i=1}^{N}$: event times in
+seconds (from nanosecond exchange timestamps) and channel marks
+$k_i\in\{1,\dots,K\}$, $K=62$, on the fixed taxonomy
+$\{\mathrm{LO},\mathrm{CO}\}\times\{b,a\}\times\{L1..L10\}$ (40) $\cup$
+$\mathrm{MO}\times\{b,a\}\times\{L1\}$ (2) $\cup$
+$\mathrm{IS}\times\{b,a\}\times\{L1..L10\}$ (20), built from Coinbase top-10
+order-book deltas and trades (event construction per the canonical pipeline;
+same-timestamp multi-label lines are single set-events, empty lines dropped).
+Per-file split by event index: train $[0,0.7)$, val $[0.7,0.85)$, test
+$[0.85,1]$. Train-split mean rates $R$: BTC $40.563$, ETH $42.759$,
+SOL $22.257$ ev/s.
+
+\subsection{Generative model}
+\paragraph{Factorization.} Channel intensities are
 \begin{equation}
 \lambda_k(t) \;=\; \Lambda(t)\cdot p(k\mid u(t)),\qquad
-\textstyle\sum_k p(k\mid u)=1,
+\textstyle\sum_{k=1}^{K} p(k\mid u)=1 .
+\label{eq:factorization}
 \end{equation}
-so the total rate $\sum_k\lambda_k=\Lambda$ is untouched by the mark model
-(\emph{rate-neutrality}): all count statistics --- mean rate, $\Fano(\Delta)$, the
-whole law of $N_\Delta$ --- depend on the ground alone. This is what licenses
-fitting the ground post hoc and explains the observed zero seed variance.
+\textbf{Rate-neutrality (key lemma).} $\sum_k\lambda_k=\Lambda$ identically for
+any mark network, hence the ground process $N(t)=\sum_k N_k(t)$ is a point
+process with intensity $\Lambda$ alone: its entire law (mean rate,
+$\Fano(\Delta)$, all count statistics) is independent of the marks. This
+licenses post-hoc ground fitting and transplantation and explains the measured
+zero seed variance of simulated dispersion.
 
-\paragraph{Ground.} A scalar linear Hawkes with an $M$-exponential kernel bank,
+\paragraph{Ground (certified lane).} A scalar linear Hawkes process on a fixed
+$M{=}6$ exponential bank:
+\begin{align}
+\Lambda(t)&=\mu_0+\sum_{m=1}^{M} a_m S^m(t), \qquad a_m\ge 0,\\
+S^m(t_i^+)&=S^m(t_i^-)+1, \qquad
+S^m(t+\Delta)=e^{-\beta_m\Delta}\,S^m(t),\\
+\beta &= (100,\ 18.2056,\ 3.3145,\ 0.6034,\ 0.1099,\ 0.02)\ \mathrm{s}^{-1},
+\quad \beta_m = 100\cdot(0.02/100)^{(m-1)/5},
+\end{align}
+equivalently the kernel $\phi(\tau)=\sum_m a_m e^{-\beta_m\tau}$, positive at
+every lag. Implementation notes that matter for exactness: accumulators are
+computed by a numerically stable log-domain scan,
+$S^m(t_i^-)=S^m_0 e^{-\beta_m t_i}+\exp\!\big(\mathrm{LCSE}_{j<i}(\beta_m t_j)-\beta_m t_i\big)$
+(float64; no upper clamp on the exponent --- burst accumulators legitimately
+exceed 1), and \emph{cold starts use the stationary mean}
 \begin{equation}
-\Lambda(t)=\mu_0+\sum_{m=1}^{M} a_m S^m(t),\qquad
-S^m(t)=\sum_{t_i<t} e^{-\beta_m (t-t_i)},\quad a_m\ge 0,
+S^m_0 \;=\; \mathbb{E}[S^m] \;=\; R/\beta_m
+\label{eq:coldstart}
 \end{equation}
-with recursion $S^m(t_i^+)=S^m(t_i^-)+1$, decay $S^m(t{+}\Delta)=e^{-\beta_m\Delta}S^m(t)$,
-closed-form compensator over a gap $\Delta_i$
-\begin{equation}
-\int_{t_{i-1}}^{t_i}\!\Lambda\,dt=\mu_0\Delta_i+\sum_m \tfrac{a_m}{\beta_m}
-S^m(t_{i-1}^+)\big(1-e^{-\beta_m\Delta_i}\big),
-\end{equation}
-exact branching $n=\sum_m a_m/\beta_m$, stationary mean rate $\mathbb{E}[\Lambda]=
-\mu_0/(1-n)$, pinned baseline $\mu_0:=R(1-n)$ (so the free-rollout mean rate equals
-the measured train rate $R$ identically), and stationary cold start
-$\mathbb{E}[S^m]=R/\beta_m$ wherever no carried state exists.
+wherever no carried state exists (validation windows, TBPTT lane resets, eval
+chunk starts). Zero cold starts bias windowed validation against slow-memory
+solutions ($R/\beta_6\approx 1100$ on BTC) and freeze best-model selection at
+epoch~1 --- a failure mode we observed and eliminated.
 
-\paragraph{Ground estimation (Kirchner).} Bin total counts at width $\delta$:
-$X_n=N((n{-}1)\delta,n\delta]$. The Hawkes conditional mean is linear in lagged
-counts,
-\begin{equation}
-\mathbb{E}[X_n\mid\mathcal{F}_{n-1}]\;\approx\;\delta\mu+\sum_{j\ge 1}
-\phi(j\delta)\,\delta\,X_{n-j},
-\end{equation}
-so aggregating lags into lin--log cells $[\ell_c,h_c)$ and solving OLS (normal
-equations accumulated per day, burn-in one max-lag) yields cell integrals
-$\Phi_c=\int_{\ell_c}^{h_c}\phi$. Projection onto the fixed bank is a non-negative
-least squares in $a$:
-\begin{equation}
-\Phi_c=\sum_m \frac{a_m}{\beta_m}\Big(e^{-\beta_m\ell_c}-e^{-\beta_m h_c}\Big)
-\;\Longrightarrow\; a=\mathrm{NNLS}(A,\Phi),\quad
-A_{cm}=\tfrac{1}{\beta_m}(e^{-\beta_m\ell_c}-e^{-\beta_m h_c}).
-\end{equation}
-The estimator's target is the cross-scale count autocovariance --- the integrand of
-$\Fano(\Delta)$ via \eqref{eq:cox} --- so the spectrum cannot be misallocated
-relative to dispersion. A final one-dimensional moment match tunes $n$ (global
-rescale of $a$) to the empirical Fano curve by log-MSE, validated by exact cluster
-simulation of the ground (immigrants $\sim$ Poisson($\mu_0$); each event spawns
-Poisson($a_m/\beta_m$) children at $\mathrm{Exp}(\beta_m)$ delays per bank element).
+\paragraph{Exact ground identities.}
+\begin{align}
+\text{branching:}\quad & n=\int_0^\infty\!\phi=\sum_m a_m/\beta_m
+\quad\text{(closed form, gauge-free)},\\
+\text{stationarity:}\quad & \bar\Lambda=\mu_0/(1-n)
+\ \Rightarrow\ \text{pin } \mu_0:=R(1-n),\\
+\text{compensator:}\quad &
+\int_{t_{i-1}}^{t_i}\!\Lambda\,dt=\mu_0\Delta_i+\sum_m\tfrac{a_m}{\beta_m}
+S^m(t_{i-1}^+)\big(1-e^{-\beta_m\Delta_i}\big)
+\quad\text{(no quadrature)},\\
+\text{dispersion:}\quad & \Fano(\infty)=\frac{1}{(1-n)^2}
+\quad\text{(cluster sizes } \mathbb{E}S=\tfrac{1}{1-n},\ \mathbb{E}S^2=\tfrac{1}{(1-n)^3}),\\
+\text{dominating rate:}\quad & \Lambda(t)\le\Lambda(t_{\mathrm{last}}^+)\ \text{between events}
+\quad\text{(each } S^m \text{ decays monotonically)}.
+\end{align}
 
-\paragraph{Marks.} $p(k\mid u)=\mathrm{softmax}(\mathrm{MLP}(u))_k$ with $u(t)$ the
-LayerNormed output of the shared 2-layer diagonal-SSM (S2P2) backbone, trained by
-cross-entropy under MLE (TBPTT); the simplex constraint makes arbitrary mark depth
-free of stability or dispersion consequences.
+\paragraph{Marks (free lane): the S2P2 backbone.} Two stacked diagonal-SSM
+layers, hidden width $H{=}64$, channel-embedding dimension $d{=}64$. Per layer
+$\ell\in\{1,2\}$ with state $x^{(\ell)}\in\mathbb{R}^{H}$:
+\begin{align}
+\text{decay:}\quad & \mathrm{dec}^{(\ell)}(u)=\big(\mathrm{softplus}(\theta^{(\ell)})+10^{-4}\big)
+\odot \mathrm{clamp}\big(\mathrm{softplus}(W_g^{(\ell)}u),\,0.05,\,20\big),\\
+&\theta^{(\ell)} \text{ init log-spaced: timescales } 1/\mathrm{dec} \in [0.02, 60]\,\mathrm{s},\notag\\
+\text{evolution:}\quad & x^{(\ell)}(t{+}\Delta)=\bar a\,x^{(\ell)}(t^{+})+(1-\bar a)\,W_{in}^{(\ell)}u,
+\qquad \bar a=e^{-\mathrm{dec}^{(\ell)}\Delta},\\
+\text{event impulse:}\quad & x^{(\ell)}(t_i^+)=x^{(\ell)}(t_i^-)+W_{imp}^{(\ell)}\,e_{k_i},\\
+\text{layer output:}\quad & u^{(\ell)}=\mathrm{LN}^{(\ell)}\!\big(W_{skip}^{(\ell)}u^{(\ell-1)}
++\mathrm{GELU}(W_{out}^{(\ell)}x^{(\ell)})\big),
+\end{align}
+with $u^{(0)}=0$ at query time (anti-leakage: the left-limit evolution to $t_i$
+never sees the current event), ZOH inter-layer inputs on the query path, and
+the head embedding $u(t)=u^{(2)}(t)$ (paper-faithful ``output'' readout). Mark
+head: $p(k\mid u)=\mathrm{softmax}\big(W_2\,\mathrm{ReLU}(W_1 u)\big)_k$,
+$W_1\in\mathbb{R}^{64\times64}$, $W_2\in\mathbb{R}^{62\times64}$.
 
-\paragraph{Likelihood and simulation.} Exact log-likelihood
-$\sum_i[\log\Lambda(t_i^-)+\log p(k_i\mid u(t_i^-))]-\int\Lambda$, with the
-compensator in closed form. Simulation by inversion (or thinning with the dynamic
-bound: between events every $S^m$ decays, so the current $\Lambda$ is an exact
-dominating rate). Post-hoc rate calibration is retained protocol-side and lands
-$\kappa\approx 1$ by the pin.
+\subsection{Likelihood}
+\begin{equation}
+\log\mathcal{L} \;=\; \sum_i\Big[\log\Lambda(t_i^-)+\log p(k_i\mid u(t_i^-))\Big]
+\;-\;\int_0^T\!\Lambda(t)\,dt,
+\end{equation}
+with the integral in closed form per gap (endpoint-exact for the ground; no
+sampling). Under the factorization the two terms decouple: the ground's
+parameters appear only in the time terms, the backbone's only in the mark
+cross-entropy (this is also why, in the gateless model, the backbone receives
+no time-gradient --- the documented ${\sim}2$pp mark cost, addressed by the
+TL-SSM gate of Section~\ref{sec:tlssm}).
+
+\subsection{Ground estimation (set, don't learn)}
+\paragraph{Step 1: binned-count regression (Kirchner).} Bin train-zone total
+counts at $\delta=0.25$\,s: $X_n=N((n{-}1)\delta,n\delta]$. The Hawkes/INAR
+identity
+\begin{equation}
+\mathbb{E}[X_n\mid\mathcal{F}_{n-1}]\;\approx\;\delta\mu+\sum_{j\ge1}\phi(j\delta)\,\delta\,X_{n-j}
+\end{equation}
+is aggregated over a lin--log lag-cell grid: cell edges
+$\{\delta,2\delta,\dots,9\delta\}\cup\mathrm{geom}(10\delta,\,240\,\mathrm{s},\,14)$
+(deduplicated; $C=22$ cells to a 240\,s horizon), regressors = lagged counts
+summed per cell (computed by prefix sums), intercept included, one max-lag
+burn-in per day, normal equations accumulated across the seven days, ridge
+$10^{-8}$. With $b_c$ the coefficient on cell $c$'s raw lagged count, the cell
+kernel integrals are $\Phi_c=b_c\,(h_c-\ell_c)/\delta$. The regression objective
+is built from products $X_nX_{n-j}$ --- the estimator fits the lagged count
+covariances at every grid scale, i.e.\ the integrand of \eqref{eq:cox}:
+dispersion-faithfulness is a property of the estimator. Measured raw branching
+$\sum_c\Phi_c$: SOL $0.9635$, BTC $0.9795$, ETH $\approx0.98$.
+
+\paragraph{Step 2: convex projection onto the bank.}
+\begin{equation}
+\Phi_c=\sum_m\frac{a_m}{\beta_m}\big(e^{-\beta_m\ell_c}-e^{-\beta_m h_c}\big)
+\ \Longrightarrow\ a=\mathrm{NNLS}(A,\Phi_+),\quad
+A_{cm}=\tfrac{1}{\beta_m}\big(e^{-\beta_m\ell_c}-e^{-\beta_m h_c}\big),
+\end{equation}
+solved by projected gradient (no shape priors beyond positivity; the fitted
+spectra are \emph{balanced} --- ${\sim}0.80$--$0.93$ of the branching at
+$\beta_2=18.2\,\mathrm{s}^{-1}$ plus genuine slow tails --- the allocation MLE
+never found in three attempts).
+
+\paragraph{Step 3: dispersion-curve selection of $n$.} The single remaining
+scalar rescales $a\to(n^\star/n)a$. Candidates are evaluated through the
+\emph{pipeline's own} stylized-facts estimator (600\,s calibrated rollouts,
+equal-duration matching) and $n^\star$ minimizes
+$\sum_{\Delta}\big(\log \Fano_{\mathrm{sim}}(\Delta)-\log \Fano_{\mathrm{real}}(\Delta)\big)^2$
+over $\Delta\in\{1,2,5,10,20,50\}$\,s. (A standalone branching-representation
+simulator --- immigrants $\sim$Poisson$(\mu_0 T)$, each event spawning
+Poisson$(a_m/\beta_m)$ children at $\mathrm{Exp}(\beta_m)$ delays --- is used
+for pre-screening; it agrees with the pipeline estimator at SOL's criticality
+and reads ${\sim}1.8\times$ hot at BTC/ETH's, hence the pipeline-based final
+selection.)
+
+\paragraph{Fitted values (final, per asset).} Shared $\beta$ bank as above;
+$a_m$ at the selected $n^\star$; $n$-contributions $a_m/\beta_m$ in brackets:
+\begin{center}\footnotesize
+\begin{tabular}{lccp{8.6cm}}
+\toprule
+ & $n^\star$ & $\mu_0=R(1-n^\star)$ & $a$ (nonzero entries) \\
+\midrule
+BTC & $0.9925$ & $0.3042$ &
+$a_2{=}16.920\,[.929]$, $a_4{=}0.0160\,[.027]$, $a_5{=}0.0016\,[.015]$, $a_6{=}0.0004\,[.022]$\\
+ETH & $0.995$ & $0.2138$ &
+$a_2{=}15.717\,[.863]$, $a_3{=}0.0523\,[.016]$, $a_4{=}0.0289\,[.048]$, $a_5{=}0.0046\,[.042]$, $a_6{=}0.0005\,[.026]$\\
+SOL & $0.99$ & $0.2226$ &
+$a_2{=}14.540\,[.799]$, $a_3{=}0.0617\,[.019]$, $a_4{=}0.0270\,[.045]$, $a_5{=}0.0060\,[.055]$, $a_6{=}0.0015\,[.073]$\\
+\bottomrule
+\end{tabular}
+\end{center}
+Fit cost: ${\sim}3$ CPU minutes per asset; no gradient training of the ground.
+
+\subsection{Mark training (the only learned component)}
+Adam, lr $2\times10^{-3}$, weight decay $10^{-6}$, gradient-norm clip $0.5$,
+batch 64, \textbf{seq/stride 4096} (windows ${\sim}100$\,s BTC/ETH,
+${\sim}184$\,s SOL), \textbf{48 epochs} (update parity with the seq-1024/12-epoch
+baseline), categorical cross-entropy on the single active channel, TBPTT lane
+batching (stream-order lanes; decoder state --- including the ground
+accumulators --- carried detached across windows; lanes reset to
+learned-init/stationary state at zone boundaries), best model by validation
+NLL, strict non-finite aborts, TF32 on. During mark training the ground may be
+MLE-trained or frozen --- irrelevant to the final model, since the fitted
+ground replaces it at transplant (rate-neutrality); the shipped \texttt{lgm-kf2}
+uses exactly this recipe's checkpoints with the Section~5.4 grounds
+transplanted.
+
+\subsection{Simulation and evaluation protocol}
+Closed-loop rollouts with carried context ($O(1)$/step state updates), sampler:
+inversion (thinning is equally exact via the monotone dominating rate).
+Protocol-side post-hoc rate calibration (bisection on $\kappa$, validation-rate
+target, verified within 5\%) is retained and lands $\kappa\in[1.01,1.02]$ ---
+the pin holding in practice. Facts on 600\,s $\times$ 32-sequence rollouts,
+equal-duration matched against real segments, 3 rollout seeds per checkpoint.
+
+\subsection{What is set vs learned}
+\begin{center}\small
+\begin{tabular}{ll}
+\toprule
+mean rate & \textbf{set} (pin, algebraic identity)\\
+branching $n$ & \textbf{measured} (regression), then \textbf{set} (dispersion-curve match)\\
+kernel spectrum $a$ & \textbf{fitted convexly} to count covariances (OLS + NNLS)\\
+decay bank $\beta$, cell grid, $\delta$ & \textbf{fixed} (log-spaced; stated above)\\
+mark distribution $p(k\mid u)$ & \textbf{learned} (MLE; the one place neural capacity belongs)\\
+\bottomrule
+\end{tabular}
+\end{center}
 
 \section{Outlook: the two-lane state-space point process (TL-SSM)}
 \label{sec:tlssm}
