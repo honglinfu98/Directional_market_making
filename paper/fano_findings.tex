@@ -317,6 +317,48 @@ bound: between events every $S^m$ decays, so the current $\Lambda$ is an exact
 dominating rate). Post-hoc rate calibration is retained protocol-side and lands
 $\kappa\approx 1$ by the pin.
 
+\section{Outlook: the two-lane state-space point process (TL-SSM)}
+\label{sec:tlssm}
+
+The \lgm{}-kf architecture runs two exponentially-decaying impulse memories of the
+same event history (the SSM backbone and the Hawkes accumulators) --- sibling
+objects under different constraints. The unified formulation makes the ground a
+\emph{reserved lane} of one state machine. State $x(t) = [\,z(t) \in
+\mathbb{R}^M_{\ge0}\,;\, h(t) \in \mathbb{R}^H\,]$ with a shared event loop:
+\begin{align}
+z(t_i{+}\Delta) &= e^{-B\Delta} z(t_i^+), & z(t_i^+) &= z(t_i^-) + w_{k_i}\mathbf{1},
+& B &= \mathrm{diag}(\beta)\ \text{fixed},\ w_k = \psi(e_k)\ge0, \notag\\
+h(t_i{+}\Delta) &= e^{-D(h,u)\Delta}h(t_i^+) + \ldots, & h(t_i^+) &= h(t_i^-) + B_h e_{k_i}
+& &\text{(unconstrained)}. \notag
+\end{align}
+Readouts respect the lane disciplines: rate $\Lambda = \mu_0 + a^\top z$ ($a\ge0$,
+linear, no normalization --- certificate lane); marks
+$p(k|u)=\mathrm{softmax}(\mathrm{MLP}(u))$ (free lane); and the optional
+\emph{bounded, mean-one gate} coupling the lanes,
+\begin{equation}
+\tilde\Lambda(t) = \Lambda(t)\,g(u(t)),\qquad
+g = \exp\big(\gamma(\tanh(v^\top u) - \bar c)\big),\ \gamma=\log G_{\max},\
+\bar c = \mathrm{EMA}[\tanh(v^\top u)],
+\end{equation}
+so $g$ has geometric mean ${\approx}1$ (pin preserved in expectation; residual
+absorbed by the verified $\kappa$ calibration) and $\rho_{\text{eff}} \le
+G_{\max}^2\, n$ (documented bound). The gate is the \emph{only} path by which the
+time likelihood reaches the backbone --- the fix for \lgm{}'s measured
+underemployment (${\sim}2$pp mark gap) --- and its $\mathrm{Var}(g)$ contributes
+bounded \emph{state-dependent} dispersion (regime burstiness) beyond any linear
+Hawkes, targeting the kurtosis residual. Gateless ($g{\equiv}1$), the TL-SSM is
+law-identical to \lgm{}-kf; estimation still splits by lane (ground: Kirchner,
+convex, frozen; $h$, marks, $g$: MLE).
+
+Verification before launch (all passed): neutral start $g\equiv1$ exactly
+(zero-init $v$); observed gate range $[0.50, 2.00]$ within the worst-case bound;
+time-term gradients reach the backbone decays and impulses; frozen ground
+untouched by optimization ($n=0.99$ preserved); geometric mean $0.993$ after EMA
+burn-in. Experiment \texttt{lgm-tl} (SOL, 3 seeds, seq 4096 / 48 epochs, fitted
+ground frozen, $G_{\max}=2$) is in flight against \texttt{lgm-kf}; the reads are
+(a) mark accuracy vs the underemployment gap, (b) $\kappa \approx 1$ retention,
+(c) Fano-curve retention with kurtosis moving toward real.
+
 \section{The Jain (Compound Hawkes) reference point}
 
 Jain's simulator never optimizes or reports the Fano factor; dispersion is scored via

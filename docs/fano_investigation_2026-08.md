@@ -365,3 +365,25 @@ Sources: impulse-control paper (arXiv 2510.26438), Compound-Hawkes FRL paper
   (§3), saturation/teacher-forced-level probe (§4.6).
 - Figures: `docs/figs/fano_three_assets.png` (all arms), `docs/figs/fano_w4k.png`
   (window-coverage result, per-seed).
+
+### 4.11 Final assembly + the two-lane SSM (2026-08-09, in flight)
+
+**Retune final:** BTC n=0.9925 (0.995/0.9975 overshoot short scales; logMSE
+arbitrates), ETH n=0.995 (logMSE 0.0084 — within ~10% at every scale). Mark
+retrains (lgm-w4k48, seq 4096/48ep/stationary fix) landed: SOL 0.195 (**beats**
+ss2p2 0.192), BTC 0.428 (+3.3pp vs stale donors), ETH 0.326 (+3.6pp); the
+residual ~2pp on BTC/ETH is the structural time-gradient gap. Final assembly
+`lgm-kf2` (tuned grounds x retrained marks, 9 eval tasks, job 7150066) in flight.
+
+**Two-lane SSM (lgm-tl, job 7150155):** the unified architecture — the ground as
+a certified lane (linear, positive, fixed decays, frozen at the Kirchner fit)
+inside one state machine, plus a bounded mean-one gate g(u) =
+exp(log(Gmax)(tanh(v'u) − EMA)) coupling the free lane to the rate. Gateless it
+is law-identical to lgm-kf; the gate restores the time-likelihood gradient to
+the backbone (the underemployment fix) and adds bounded state-dependent
+dispersion (kurtosis target), at the cost of certificate ≤ Gmax²·n (bound, not
+equality) and expectation-level (not exact) pin. Pre-launch verification passed:
+neutral start exact, bounds held, backbone time-gradients confirmed, frozen
+ground intact (n=0.99), geometric-mean-one gate. SOL 3 seeds, seq 4096/48ep,
+Gmax=2, vs lgm-kf reads: mark accuracy, kappa≈1 retention, Fano retention +
+kurtosis gain.
