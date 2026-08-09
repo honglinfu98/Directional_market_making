@@ -254,6 +254,48 @@ to push BTC/ETH to n ≈ 0.985–0.99 under the pipeline's measure and recover t
 50 s tail. Open residuals: that retune, and the short-scale type-dependence
 (typed kicks) refinement.
 
+### 4.10 Pipeline-estimator retune + typed excitation (2026-08-09, in progress)
+
+**Retune probes (jobs 7149568/7149621):** running n candidates through the
+pipeline's own stylized-facts estimator removes the standalone-sim mismatch.
+First grid (SF-only, 1 rollout seed):
+
+| n | BTC F(50s) | ETH F(50s) |
+|---|---|---|
+| 0.9875 | 714 | 694 |
+| 0.99 | 848 | 772 |
+| 0.9925 | 1009 | 928 |
+| real | 1463 | 1247 |
+
+Monotone, smooth (~+20% at 50 s per +0.0025 of n); ETH at 0.9925 is already exact
+through 10 s (61/98/183/292 vs 61/95/183/316). Final rung (BTC 0.995/0.9975,
+ETH 0.995) in flight.
+
+**Typed excitation measured (scripts/kirchner_fit_typed.py):** joint 8-group
+binned-count regression + shrunk per-channel kicks (E[w]=1 normalized):
+
+| group | BTC | ETH | SOL |
+|---|---|---|---|
+| MO_b / MO_a | **286 / 458** | **131 / 124** | **122 / 23** |
+| IS_b / IS_a | 0.39 / 0.48 | 0.54 / 0.62 | 4.6 / 3.5 |
+| CO_b / CO_a | 0.61 / 0.97 | 1.18 / 1.15 | 0.63 / 0.61 |
+| LO_b / LO_a | 0.22 / 0.28 | 0.35 / 0.44 | 0.47 / 0.56 |
+
+Universal law: **market orders are the ignition events** (~100–450x the average
+event's excitation; one BTC trade begets ~hundreds of quote events). Honest
+correction to §2's prediction: per-event IS kicks on BTC are LOW (0.4) precisely
+because IS is 52% of flow — undercutting is the diluted routine; the rare MOs
+carry the ignition. Separability (rank-1 energy): BTC 87%, ETH 92%, SOL 73% —
+the separable typed decoder suffices for the first pass. Caveat for transplants:
+kick heterogeneity implies large E[w^2]/E[w]^2 variance multipliers, so typed
+grounds need substantially lower n (marked-cluster tuning next).
+
+**Accuracy track:** LGM mark retrains at seq 4096 / 48 epochs / stationary
+cold-start (job 7149607, tags lgm-w4k48-s*) — targeting mark parity or better vs
+SS2P2 (its own w4k48 control gained +0.4pp), onto which fitted grounds transplant
+freely. Final assembly: retrained marks x per-asset tuned ground (typed or
+untyped, whichever wins the probes).
+
 ## 5. The Jain (Konark) reference point
 
 Sources: impulse-control paper (arXiv 2510.26438), Compound-Hawkes FRL paper
