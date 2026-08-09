@@ -330,6 +330,12 @@ def main():
                         help='Number of ground kernel timescales (M != 4 -> log-spaced 100..0.02/s bank)')
     parser.add_argument('--lgm-typed-kicks', action='store_true',
                         help='Per-channel ground kick weights w_k (Konark-style typed excitation)')
+    parser.add_argument('--lgm-gate-max', type=float, default=0.0,
+                        help='TL-SSM: bounded mean-one gate g(u) on the ground (0 = off)')
+    parser.add_argument('--lgm-ground-file', type=str, default='',
+                        help='JSON from kirchner_fit_lgm.py: initialize the ground from it')
+    parser.add_argument('--lgm-freeze-ground', action='store_true',
+                        help='Freeze the ground kernel parameters')
     parser.add_argument('--decoder-type',
                         choices=['s2p2', 'ss2p2', 'lgm'],
                         default='ss2p2',
@@ -430,6 +436,7 @@ def main():
         'target_rate': args.target_rate,
         'lgm_timescales': args.lgm_timescales,
         'lgm_typed_kicks': args.lgm_typed_kicks,
+        'lgm_gate_max': args.lgm_gate_max,
         'tbptt': args.tbptt,
         's2p2_readout': args.s2p2_readout,
         's2p2_layers': args.s2p2_layers,
