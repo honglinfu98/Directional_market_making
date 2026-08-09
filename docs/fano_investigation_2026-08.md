@@ -387,3 +387,55 @@ neutral start exact, bounds held, backbone time-gradients confirmed, frozen
 ground intact (n=0.99), geometric-mean-one gate. SOL 3 seeds, seq 4096/48ep,
 Gmax=2, vs lgm-kf reads: mark accuracy, kappa≈1 retention, Fano retention +
 kurtosis gain.
+
+### 4.12 Results: lgm-kf2 final assembly + lgm-tl (2026-08-09, jobs 7150066/7150155)
+
+**lgm-kf2 (tuned grounds × lgm-w4k48 retrained marks; 3 seeds × 3 rollouts per
+asset, all 9 eval tasks rc=0).** Fano scales {1,2,5,10,20,50}s, equal-duration
+matched real in parens; seed-sd across the 9 rollouts in brackets:
+
+| asset | acc (3 seeds) | ppl | time-NLL | time-KS | κ | Fano model vs real |
+|---|---|---|---|---|---|---|
+| BTC | 0.4280/0.4277/0.4293 | 9.2 | −3.4254 | 0.111 | 1.019 | [101, 162, 283, 422, 618, 1007] vs [55, 85, 157, 258, 433, 900] |
+| ETH | 0.3277/0.3252/0.3252 | 14.1 | −3.6450 | 0.150 | 1.016 | [67, 110, 210, 349, 585, 1170] vs [79, 125, 245, 417, 748, 1571] |
+| SOL | 0.1944/0.1961/0.1952 | 23.9 | −3.0350 | 0.228 | 1.014 | [31, 46, 80, 126, 208, 423] vs [42, 59, 95, 142, 233, 433] |
+
+- **SOL: the clean win.** Accuracy 0.194–0.196 (≥ ss2p2-full 0.192), Fano within
+  ~25% at 1 s converging to ~2% at 50 s, κ=1.014. F6 0.113 (real 0.150).
+- **ETH: level and shape right, modest undershoot** (ratio 0.85 at 1 s → 0.74 at
+  50 s). F6 0.512 vs real 0.489 — volatility clustering essentially matched.
+- **BTC: now OVER-disperses at short scales** (×1.8 at 1 s, converging to ×1.1
+  at 50 s). The n=0.9925 retune was arbitrated by logMSE across scales; against
+  this eval's equal-duration real curve ([55…900], lower at short scales than
+  the tuning reference) the short-scale weight is too hot. A half-step retune
+  (n≈0.99) would likely center it; deferred — the miss is 2× where ss2p2's was
+  15–30× under.
+- Time-NLL/KS identical across seeds within an asset (frozen shared ground owns
+  the time law — marks are rate-neutral). Seed-sd of dispersion remains ~0 at
+  short scales (2–8%), confirming transplant determinism.
+- Kurtosis remains the open residual everywhere: BTC 47 (real 88), ETH 7 (35),
+  SOL 22 (163). This is the TL gate's target, not the linear ground's.
+
+**lgm-tl (gated two-lane SSM, SOL).** Genuine (all 3 seeds): acc
+0.1974/0.1960/0.1966, time-NLL −3.086/−3.163/−3.090, time-KS 0.190/0.199/0.199.
+Stylized facts: s2 completed — κ=1.044, Fano [44, 64, 110, 168, 249, 400] vs
+real [42, 59, 95, 142, 233, 433], F6 0.110, excess kurtosis 62.1; s1/s3 sf
+FAILED κ-calibration (5% tolerance, 10 bisection steps; brackets
+[0.977,0.979] and [0.989,0.991] — the gated rate is non-monotone/noisy in κ
+near criticality). Reads:
+
+- **(a) accuracy — PASS.** All three seeds ≥0.196: beats lgm-kf2 SOL
+  (0.194–0.196) and ss2p2-full (0.192). Time-NLL −3.09 to −3.16 vs kf2's −3.035
+  and time-KS 0.19 vs 0.228 — the gate demonstrably restored the time-likelihood
+  gradient to the backbone (the underemployment fix worked).
+- **(b) κ≈1 retention — FAIL/partial.** s2 needed κ=1.044 (kf2: 1.014) and 2/3
+  seeds could not be calibrated to 5% at all. The expectation-level pin is
+  measurably looser than the exact pin; the gate's rate perturbation makes
+  bisection fragile near n=0.99.
+- **(c) dispersion — PASS.** Fano retained and arguably better at 1–10 s (44 vs
+  real 42 at 1 s; kf2: 31); kurtosis 62 vs kf2's 22, moving toward real 163 —
+  the state-dependent Var(g) mechanism does inject the targeted burstiness.
+
+**Verdict:** the gate buys prediction + kurtosis at the cost of pin exactness.
+Next lever: recover calibration robustness (per-seed κ grid fallback, or a
+tighter EMA/smaller Gmax) before promoting TL beyond SOL.

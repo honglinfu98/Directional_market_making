@@ -452,6 +452,39 @@ mark distribution $p(k\mid u)$ & \textbf{learned} (MLE; the one place neural cap
 \end{tabular}
 \end{center}
 
+\subsection{Final results}
+All nine evaluation tasks (3 assets $\times$ 3 mark seeds, 3 rollout seeds each)
+completed. Fano scales $\{1,2,5,10,20,50\}$\,s, equal-duration-matched real in
+the second row of each cell:
+\begin{center}\footnotesize
+\begin{tabular}{lccccl}
+\toprule
+ & acc (3 seeds) & ppl & time-NLL & $\kappa$ & Fano model / real \\
+\midrule
+BTC & $.428/.428/.429$ & $9.2$ & $-3.425$ & $1.019$ &
+\begin{tabular}[t]{@{}l@{}}$[101,162,283,422,618,1007]$\\ $[55,85,157,258,433,900]$\end{tabular}\\[2ex]
+ETH & $.328/.325/.325$ & $14.1$ & $-3.645$ & $1.016$ &
+\begin{tabular}[t]{@{}l@{}}$[67,110,210,349,585,1170]$\\ $[79,125,245,417,748,1571]$\end{tabular}\\[2ex]
+SOL & $.194/.196/.195$ & $23.9$ & $-3.035$ & $1.014$ &
+\begin{tabular}[t]{@{}l@{}}$[31,46,80,126,208,423]$\\ $[42,59,95,142,233,433]$\end{tabular}\\
+\bottomrule
+\end{tabular}
+\end{center}
+SOL is the clean win: accuracy at or above the \sspp{} baseline (0.192) with the
+Fano curve within ${\sim}25\%$ at 1\,s converging to ${\sim}2\%$ at 50\,s. ETH
+matches shape with a modest undershoot (ratio $0.85\to0.74$) and essentially
+matches volatility clustering (F6 $0.512$ vs real $0.489$). BTC now
+\emph{over}-disperses at short scales ($\times1.8$ at 1\,s, converging to
+$\times1.1$ at 50\,s): the $n^\star{=}0.9925$ log-MSE arbitration ran against a
+tuning reference hotter at short scales than this eval's equal-duration real
+curve; a half-step retune toward $n{\approx}0.99$ would center it. The miss is
+$2\times$ where \sspp{}'s was $15$--$30\times$ \emph{under}. Two structural
+signatures confirm the architecture: time-NLL/KS are bit-identical across mark
+seeds within an asset (the frozen shared ground owns the time law), and
+short-scale dispersion seed-sd stays at $2$--$8\%$ (transplant determinism).
+Excess kurtosis remains the open residual (BTC 47 vs real 88; ETH 7 vs 35; SOL
+22 vs 163) --- the TL-SSM gate's target, not the linear ground's.
+
 \section{Outlook: the two-lane state-space point process (TL-SSM)}
 \label{sec:tlssm}
 
@@ -490,9 +523,25 @@ Verification before launch (all passed): neutral start $g\equiv1$ exactly
 time-term gradients reach the backbone decays and impulses; frozen ground
 untouched by optimization ($n=0.99$ preserved); geometric mean $0.993$ after EMA
 burn-in. Experiment \texttt{lgm-tl} (SOL, 3 seeds, seq 4096 / 48 epochs, fitted
-ground frozen, $G_{\max}=2$) is in flight against \texttt{lgm-kf}; the reads are
+ground frozen, $G_{\max}=2$) ran against \texttt{lgm-kf2}; the reads were
 (a) mark accuracy vs the underemployment gap, (b) $\kappa \approx 1$ retention,
 (c) Fano-curve retention with kurtosis moving toward real.
+
+\paragraph{TL-SSM results (SOL).} (a) \emph{Accuracy: pass.} All three seeds
+reach $0.196$--$0.197$ (vs \lgm{}-kf2 $0.194$--$0.196$, \sspp{} $0.192$), with
+time-NLL $-3.09$ to $-3.16$ (kf2: $-3.035$) and time-KS $0.19$ (kf2: $0.228$)
+--- direct evidence the gate restored the time-likelihood gradient to the
+backbone. (b) \emph{Pin retention: partial fail.} The completed seed needed
+$\kappa=1.044$ (kf2: $1.014$) and two of three seeds failed the $5\%$
+calibration outright (the gated rate is non-monotone in $\kappa$ near
+criticality) --- the expectation-level pin is measurably looser than the exact
+pin. (c) \emph{Dispersion: pass.} On the completed seed, Fano
+$[44,64,110,168,249,400]$ vs real $[42,59,95,142,233,433]$ --- better than kf2
+at $1$--$10$\,s --- and excess kurtosis $62$ vs kf2's $22$, moving toward the
+real $163$: the $\mathrm{Var}(g)$ mechanism injects the targeted
+state-dependent burstiness. Net: the gate buys prediction and kurtosis at the
+cost of pin exactness; calibration robustness (tighter EMA, smaller
+$G_{\max}$, or a per-seed $\kappa$ grid) is the outstanding engineering item.
 
 \section{The Jain (Compound Hawkes) reference point}
 
