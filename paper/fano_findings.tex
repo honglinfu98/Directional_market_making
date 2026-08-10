@@ -527,21 +527,35 @@ ground frozen, $G_{\max}=2$) ran against \texttt{lgm-kf2}; the reads were
 (a) mark accuracy vs the underemployment gap, (b) $\kappa \approx 1$ retention,
 (c) Fano-curve retention with kurtosis moving toward real.
 
-\paragraph{TL-SSM results (SOL).} (a) \emph{Accuracy: pass.} All three seeds
-reach $0.196$--$0.197$ (vs \lgm{}-kf2 $0.194$--$0.196$, \sspp{} $0.192$), with
-time-NLL $-3.09$ to $-3.16$ (kf2: $-3.035$) and time-KS $0.19$ (kf2: $0.228$)
---- direct evidence the gate restored the time-likelihood gradient to the
-backbone. (b) \emph{Pin retention: partial fail.} The completed seed needed
-$\kappa=1.044$ (kf2: $1.014$) and two of three seeds failed the $5\%$
-calibration outright (the gated rate is non-monotone in $\kappa$ near
-criticality) --- the expectation-level pin is measurably looser than the exact
-pin. (c) \emph{Dispersion: pass.} On the completed seed, Fano
-$[44,64,110,168,249,400]$ vs real $[42,59,95,142,233,433]$ --- better than kf2
-at $1$--$10$\,s --- and excess kurtosis $62$ vs kf2's $22$, moving toward the
-real $163$: the $\mathrm{Var}(g)$ mechanism injects the targeted
-state-dependent burstiness. Net: the gate buys prediction and kurtosis at the
-cost of pin exactness; calibration robustness (tighter EMA, smaller
-$G_{\max}$, or a per-seed $\kappa$ grid) is the outstanding engineering item.
+\paragraph{TL-SSM results (SOL; all three seeds, after a calibrator fix).}
+The initial run exposed a protocol fragility: $\kappa$-bisection assumes the
+probe rate is a low-noise monotone function of $\kappa$, but near criticality
+the probe standard error $\sim\sqrt{F\cdot R/T_{\text{total}}}$ exceeds the
+$5\%$ tolerance and brackets collapse on noise (two of three seeds failed).
+The repaired calibrator (converged path untouched) adds a replicate-confirmed
+deep accept and, on bracket exhaustion, a pooled regression on the exact
+$\kappa$-scaled Hawkes law $1/R(\kappa)= a/\kappa + c$ (linear in $1/\kappa$)
+with a high-precision confirmation; the full-scale $15\%$ verification remains
+the protocol gate. All three seeds then complete
+($\kappa = 0.982,\ 1.046,\ 0.986$; full-scale rate residuals $-7\%$ to $+13\%$).
+
+The three reads, on full evidence: (a) \emph{Prediction: pass.} Accuracy
+$0.196$--$0.197$ (kf2 $0.194$--$0.196$, \sspp{} $0.192$), time-NLL $-3.09$ to
+$-3.16$ (kf2 $-3.035$), time-KS $0.19$ (kf2 $0.228$) --- the gate restored the
+time-likelihood gradient to the backbone. (b) \emph{Pin: fail as an identity}
+($\kappa$ spread $[0.982, 1.046]$ vs kf2's $[1.014,1.019]$), though now
+operationally robust. (c) \emph{Dispersion: fail on reliability} --- and this
+overturns the single-seed read. Per-seed Fano at $\{1,\dots,50\}$\,s:
+seed~1 $[18,\dots,119]$, seed~2 $[46,\dots,401]$, seed~3 $[54,\dots,1129]$
+against real $[42,\dots,433]$: right on average, but a $\times 9.5$ spread at
+50\,s where kf2's transplant determinism holds seed-sd to $2$--$8\%$. The
+learned gate converts dispersion from a set constant into a seed lottery ---
+rate-neutrality's zero-variance transplant guarantee is exactly what the gate
+spends. Kurtosis improves in mean ($38$ vs kf2's $22$; real $163$) but is
+seed-unstable ($13$--$61$). Net: \lgm{}-kf2 remains the shipped simulator; the
+gate is the right mechanism for prediction and kurtosis but needs its variance
+\emph{targeted} --- smaller $G_{\max}$, a gate log-variance penalty, or
+dispersion-loss-matched gate training --- before it can be promoted.
 
 \section{The Jain (Compound Hawkes) reference point}
 

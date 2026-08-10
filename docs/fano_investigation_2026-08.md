@@ -432,10 +432,62 @@ near criticality). Reads:
   seeds could not be calibrated to 5% at all. The expectation-level pin is
   measurably looser than the exact pin; the gate's rate perturbation makes
   bisection fragile near n=0.99.
-- **(c) dispersion — PASS.** Fano retained and arguably better at 1–10 s (44 vs
-  real 42 at 1 s; kf2: 31); kurtosis 62 vs kf2's 22, moving toward real 163 —
-  the state-dependent Var(g) mechanism does inject the targeted burstiness.
+- **(c) dispersion — PASS on s2 alone** (Fano [44,64,110,168,249,400] vs real
+  [42,59,95,142,233,433]; kurt 62 vs kf2 22). SUPERSEDED by the 3-seed rerun
+  below — the single completed seed was not representative.
 
-**Verdict:** the gate buys prediction + kurtosis at the cost of pin exactness.
-Next lever: recover calibration robustness (per-seed κ grid fallback, or a
-tighter EMA/smaller Gmax) before promoting TL beyond SOL.
+**Interim verdict (superseded by §4.13):** the gate buys prediction + kurtosis
+at the cost of pin exactness. Next lever: recover calibration robustness.
+
+### 4.13 Calibrator fix + full 3-seed lgm-tl simulation (2026-08-10, jobs 7150548/7150559)
+
+**The fragility, diagnosed:** κ-bisection assumes the probe rate is a low-noise
+monotone function of κ. Near criticality the probe SE ~ sqrt(Fano·R/T_total)
+exceeds the 5% tolerance (probes jumped 21.7→25.7→21.7 over a 0.3% κ interval),
+so brackets collapse on noise. **Fix (simulation@aae89cb, 44700c6; converged
+fast path untouched):** (1) *deep-accept confirm* — a within-tol probe at
+bisection step ≥4 must survive 2 replicate seeds at 2× sequences, pooled;
+(2) *regression fallback* on bracket exhaustion — pool all probes near the
+target and fit the κ-scaled Hawkes law 1/rate = a/κ + c (linear in 1/κ!),
+solve for κ, confirm at 12× probe fidelity; accept ≤5%, relaxed-accept ≤10%
+(the confirmation is low-noise, so a 6–10% miss is the model's razor-steep
+rate response, not estimator noise — the full-scale 15% verify arbitrates).
+Synthetic harness (law fitted to the real failed pool + 12% noise): 7/8 trials
+within 5.9% true error, 1/8 raises loudly. Replaying the two real failed pools:
+κ=0.979/0.985, fit-predicted rates within 1% of target.
+
+**Rerun (RESUME=1, SF-only): all 3 seeds STATUS=0.** Calibration paths:
+s1 fallback κ=0.9817 (relaxed 6.4%, verify 7.0%), s2 escalated bisection
+κ=1.0457 (verify 12.7%), s3 fallback κ=0.9857 (3.6%, verify 7.8%). The
+calibrator is fixed — every seed now completes.
+
+**But the full 3-seed dispersion overturns the s2-only read:**
+
+| seed | κ | Fano @{1,2,5,10,20,50}s | kurt |
+|---|---|---|---|
+| s1 | 0.9817 | [17.8, 22.7, 32.7, 44.8, 64.8, 118.8] | 12.8 |
+| s2 | 1.0457 | [45.5, 65.9, 110.5, 167.0, 246.8, 401.2] | 61.0 |
+| s3 | 0.9857 | [53.9, 91.7, 191.8, 326.5, 550.3, 1128.7] | 40.5 |
+| real | — | [42.3, 58.9, 94.8, 142.4, 233.1, 433.1] | 163.1 |
+| kf2 (ref) | 1.0136 | [31.1, 46.5, 80.3, 125.7, 207.7, 422.9] sd≈[2,3,9,16,29,76] | 21.8 |
+
+Pooled TL mean [39, 60, 112, 179, 287, 550] looks fine; the seed spread does
+not: sd at 1 s is 16.9 (kf2: 2.0), and 50 s Fano spans 119→1129 across seeds
+(×9.5). **The learned gate converts dispersion from a set constant into a seed
+lottery** — each seed's gate learns a different coupling to the frozen ground,
+and Var(g) compounds over 600 s rollouts. Rate-neutrality's zero-seed-variance
+transplant guarantee is exactly what the gate spends.
+
+**Final TL verdict (all reads, 3 seeds):**
+- (a) prediction — PASS (unchanged: acc 0.196–0.197, tNLL −3.09..−3.16, KS 0.19).
+- (b) κ≈1 — FAIL as a pin (κ ∈ [0.982, 1.046], rate residuals −7%..+13%) but
+  now operationally robust (calibrator completes every seed).
+- (c) dispersion — FAIL on reliability: right on average, ×9.5 seed spread.
+  Kurtosis mean 38 vs kf2 22 (real 163) — directionally right, seed-unstable.
+
+**Standing:** lgm-kf2 remains the shipped simulator (deterministic dispersion,
+exact pin). TL is the research direction for prediction + kurtosis; before
+promotion it needs gate variance control — smaller Gmax (1.25–1.5), a gate
+log-variance penalty, or dispersion-loss-matched gate training (§ss2p2-disp
+machinery exists) so the gate's dispersion contribution is *targeted* rather
+than free.
