@@ -286,6 +286,39 @@ $\Fano(\Delta)$, all count statistics) is independent of the marks. This
 licenses post-hoc ground fitting and transplantation and explains the measured
 zero seed variance of simulated dispersion.
 
+\paragraph{Why the decoupling is sound: two one-way valves.} Three exact facts,
+none approximate. (i) \emph{Factorization is an identity}: any MTPP satisfies
+$\lambda_k=\Lambda\cdot(\lambda_k/\Lambda)$; Eq.~\eqref{eq:factorization} is the
+form in which Chang, Boyd \& Smyth (AISTATS 2024) parameterize set-valued
+MTPPs (the lineage of this codebase), so adopting it loses no generality.
+(ii) \emph{The likelihood separates additively}:
+$\ell=\big[\sum_i\log\Lambda(t_i)-\int\Lambda\big]
++\sum_i\log p(k_i\mid u(t_i^-))
+=\ell_{\mathrm{time}}(\theta_g)+\ell_{\mathrm{mark}}(\theta_m)$
+with \emph{disjoint} parameter blocks, so block-wise estimation --- moments
+(Kirchner) for $\theta_g$, MLE for $\theta_m$ --- \emph{is} the joint MLE
+restricted to each block; and since $\ell_{\mathrm{mark}}$ is teacher-forced on
+real times and contains no ground parameter, the fitted ground may be
+transplanted after mark training. (iii) \emph{The count process is autonomous}:
+because the accumulators are mark-blind ($+1$ per event regardless of channel),
+$\Lambda$ is a function of event times only --- the times form a self-contained
+scalar Hawkes and marks are a posterior coloring of its ticks. Coloring ticks
+cannot change their number, which upgrades the lemma to a theorem about
+\emph{simulation}: the entire Fano curve is a set-once constant of
+$(a,\beta,n)$. In valve language: rate-neutrality closes marks$\to$rate (the
+training decouples); mark-blindness closes rate$\to$marks (the simulation
+decouples). Each relaxation we ran opens exactly one valve and pays its
+specific price: typed kicks open rate$\to$marks (count law becomes
+mark-dependent; $n$ must be retuned on marked clusters), the TL-SSM gate opens
+marks$\to$rate ($\ell$ no longer separates; the pin loosens and dispersion
+becomes seed-dependent, \S\ref{sec:tlssm}), and a shared-state neural head
+(\sspp{}, and Chang et al.'s joint training) opens both --- nothing is
+certified or settable. Chang et al.\ supply the factorized \emph{form} and the
+$\mathcal{L}_{\mathrm{Time}}/\mathcal{L}_{\mathrm{Set}}$ split but train both
+factors jointly from one hidden state; the parametric separation, the
+mark-blind autonomous ground, the moment-based setting of the time block, and
+the resulting invariance guarantees are the contribution here.
+
 \paragraph{Ground (certified lane).} A scalar linear Hawkes process on a fixed
 $M{=}6$ exponential bank:
 \begin{align}

@@ -491,3 +491,56 @@ promotion it needs gate variance control — smaller Gmax (1.25–1.5), a gate
 log-variance penalty, or dispersion-loss-matched gate training (§ss2p2-disp
 machinery exists) so the gate's dispersion contribution is *targeted* rather
 than free.
+
+### 4.14 Synthesis: why the decoupling is sound — the two-valve theory (2026-08-11)
+
+The soundness of the lgm-kf2 split (Hawkes owns *when*, S2P2 owns *what*)
+rests on three exact facts:
+
+1. **Factorization is an identity.** Any MTPP satisfies λ_k = Λ·(λ_k/Λ);
+   choosing to model the two factors is not an assumption. This is the form of
+   Chang, Boyd & Smyth (AISTATS 2024, "Probabilistic Modeling for Sequences of
+   Sets in Continuous-Time" — the lineage of this codebase, eq. 6 there).
+2. **The likelihood separates additively with disjoint blocks:**
+   ℓ = [Σ log Λ(t_i) − ∫Λ] + Σ log p(k_i|u(t_i⁻)) = ℓ_time(θ_g) + ℓ_mark(θ_m).
+   No cross-terms, so block-wise estimation (Kirchner moments for the ground,
+   MLE for the marks) IS the joint MLE restricted to each block. ℓ_mark is
+   teacher-forced on real times and contains no ground parameter ⇒ post-hoc
+   ground transplantation is exact, not approximate.
+3. **The count process is autonomous.** Type-blind kicks make Λ a function of
+   event *times* only: the times are a self-contained scalar Hawkes; marks are
+   a coloring of its ticks. Coloring cannot change the number of ticks ⇒ every
+   count statistic (Fano curve, branching) is a set-once constant of (a, β, n)
+   for any mark parameters/seed/training path — the transplant *theorem*, and
+   the reason measured dispersion seed-variance is ~0.
+
+**Two one-way valves.** Rate-neutrality (softmax simplex) closes the
+marks→rate direction: training decouples (fact 2). Mark-blindness (unit kicks)
+closes the rate→marks direction: simulation decouples (fact 3). The
+experimental arms are exactly the four valve states:
+
+| variant | marks→rate | rate→marks | consequence |
+|---|---|---|---|
+| lgm-kf2 | closed | closed | exact pin, transplantable ground, F(Δ) deterministic |
+| typed kicks w_k | closed | OPEN | count law mark-dependent → n retune on marked clusters |
+| lgm-tl (gate) | OPEN | closed | ℓ non-separable → pin loosens, F(Δ) a seed lottery (§4.13) |
+| ss2p2 / Chang et al. | OPEN | OPEN | one shared state drives both; nothing certified/settable |
+
+Each closed valve also blocks something useful: marks→rate closed blocks the
+time-gradient the backbone wants (~2pp accuracy, the TL motivation);
+rate→marks closed blocks MO-ignition physics (kicks 122–458×, §typed fits).
+kf2 is the both-closed corner; the open problem is opening either valve *by a
+controlled amount* without losing the theorems.
+
+**Relation to Chang et al. (2024):** they supply the factorized form (their
+eq. 6) and the L_Time/L_Set likelihood split (their eq. 2), and even observe
+the capacity tension (static set models beat dynamic on L_Time alone). But
+both their factors read the same hidden state and are trained jointly — the
+factorization there is a parameterization device for 2^K set marks, not a
+separation. The parametric split, mark-blind autonomous ground, moment-based
+setting of the time block, and the invariance guarantees are this project's
+addition. One-line positioning: *we adopt the total-intensity × conditional-
+mark factorization of Chang et al. and harden it into a parametric separation,
+replacing the shared-state neural total intensity with a frozen convexly-
+fitted linear Hawkes ground so that all count statistics become set-once
+constants.*
