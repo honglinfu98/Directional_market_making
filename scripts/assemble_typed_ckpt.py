@@ -78,11 +78,16 @@ def main():
     state = ck['model_state_dict']
 
     # ground transplant: scale a to the marked-cluster n* (E[w]=1 keeps
-    # n = sum a/beta exact), betas via the stable inverse-softplus form
+    # n = sum a/beta exact), betas via the stable inverse-softplus form.
+    # The bank size may differ from the donor's training bank (w4k48 donors
+    # trained M=4; Kirchner bank M=6): only a_raw/log_delta_g carry M and the
+    # mark head never reads ground dims, so resizing at transplant is exact
+    # (kf2 precedent: donor M=4 -> shipped checkpoint M=6).
     a_fit = np.asarray(ground['a'], float)
     betas = np.asarray(ground['betas'], float)
     n_fit = float((a_fit / betas).sum())
     a = a_fit * (args.n / n_fit)
+    cfg['lgm_timescales'] = len(betas)
     from volume_set_mtpp.models.volume_set_mtpp import create_volume_set_mtpp
     model = create_volume_set_mtpp(cfg.get('num_channels', 62), cfg,
                                    torch.device('cpu'),
