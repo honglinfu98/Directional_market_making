@@ -544,3 +544,57 @@ mark factorization of Chang et al. and harden it into a parametric separation,
 replacing the shared-state neural total intensity with a frozen convexly-
 fitted linear Hawkes ground so that all count statistics become set-once
 constants.*
+
+### 4.15 Typed-kick probe: opening the rate→marks valve detonates (2026-08-12, jobs 7166991/7167036)
+
+**Setup.** Marked-cluster tuner (`tune_n_typed.py`): with the fitted kick
+tables (E[w²]≈20, MO 122×/23×), offspring variance n + n²(E[w²]−1) pulls the
+tuned branching from 0.99 to **n\*≈0.80** for both variants — but the
+iid-mark cluster fit is FLAT (over 1s, 2× under at 50s; logMSE 0.20 vs the
+blind fit's ~0.02). Probe: 6 assembled checkpoints (lgm-w4k48-s1 marks ×
+Kirchner ground scaled to n ∈ {0.80,0.85,0.90} × {channel, group} kicks,
+`assemble_typed_ckpt.py`, bank resized 4→6 per the kf2 precedent), SF-only
+through the calibrated pipeline.
+
+**Stability boundary (calibration outcomes):**
+
+| | n=0.80 | n=0.85 | n=0.90 |
+|---|---|---|---|
+| group kicks | PASS (κ=1.300) | PASS (κ=1.285) | FAIL (rate 34.9 vs 24, 45%) |
+| channel kicks | FAIL (27.2, 13%) | FAIL (31.7, 32%) | FAIL (76.8, **219%**) |
+
+All arms need κ≈1.3: in closed loop the neural mark law under-weights MO vs
+empirical frequencies (E_p_model[w]≈0.77), so the ground under-fires at
+baseline — until a burst flips it. Per-channel kicks (unshrunk IS/LO level
+profiles) are uncalibratable everywhere; group shrinkage holds to n=0.85.
+
+**The surviving arms answer the probe question — by exploding:**
+
+| arm | Fano @{1,2,5,10,20,50}s | kurt | skew |
+|---|---|---|---|
+| tkg80 | [435, 822, 1636, 2411, 2760, 3181] | 1607 | −36.2 |
+| tkg85 | [660, 1246, 2964, 4610, 5629, 6167] | 1491 | −34.9 |
+| iid tuner @0.80 | [75, 91, 113, 134, 156, 202] | — | — |
+| real | [41.3, 54.7, 85.6, 125.3, 198.7, 393.6] | 52.2 | −2.7 |
+| kf2 | [31.1, 46.5, 80.3, 125.7, 207.7, 422.9] | 21.8 | −1.8 |
+
+Closed-loop ignition feedback (bursts → p(MO|u) up → 122× kicks → bigger
+bursts) amplifies dispersion ~**20×** over the iid-mark prediction at the
+same n. The feedback is not a shape-restoring correction; it is explosively
+self-reinforcing. Ratios to real: 8–37× at every scale.
+
+**Verdict.** Opening the rate→marks valve with raw Kirchner-fitted kick
+magnitudes is unusable: mark-blindness is load-bearing for stability, not a
+convenience. The measured facts: (i) the iid-mark cluster approximation
+under-predicts closed-loop dispersion by an order of magnitude — any typed
+tuning must go through the pipeline; (ii) reflexivity makes the rate law
+bimodal (κ≈1.3 baseline under-firing + avalanches), which is also why
+calibration variance explodes; (iii) kurtosis DOES respond violently
+(1600 vs kf2's 22, real 163 on eval windows) — the mechanism aims at the
+right statistic but is ~30× too strong as fitted. Lever if revisited: temper
+the kick table (w^γ, γ≈0.3–0.5, or cap w[MO]) and tune (γ, n) jointly
+through the pipeline for kurtosis-at-fixed-Fano — dispersion level should
+stay owned by the blind ground. On SOL kf2 has no Fano headroom to gain;
+the only prize is the kurtosis residual, at the price of the transplant
+theorem. Shipped model unchanged: lgm-kf2.
+
