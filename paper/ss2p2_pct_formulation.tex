@@ -1,0 +1,328 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+
+\newtheorem{proposition}{Proposition}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+\newcommand{\Hist}{\mathcal{H}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\C}{\mathbb{C}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Real}{\operatorname{Re}}
+\newcommand{\softplus}{\operatorname{softplus}}
+\newcommand{\diag}{\operatorname{diag}}
+\newcommand{\LN}{\operatorname{LayerNorm}}
+
+\title{\textbf{SS2P2} and \textbf{PCT-S2P2}:\\
+mathematical formulation and structural comparison}
+\author{}
+\date{16 August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Two marked temporal point process models on a state-space backbone. SS2P2
+factorises the channel intensity as a \emph{bounded scalar rate} times a
+\emph{rate-neutral} mark distribution, so the marks provably cannot move the
+total rate. PCT-S2P2 replaces that factorisation with $K$ parallel per-type
+towers, each decoding its own intensity, and recovers the total as their sum.
+Both admit a closed-form dominating rate, so exact thinning applies to each.
+They differ in one property that turns out to be decisive: SS2P2's rate is
+\emph{anchored} by construction, PCT-S2P2's is only \emph{bounded}. We give
+both formulations, prove the boundedness and neutrality statements, and record
+the measured consequence.
+\end{abstract}
+
+\section{Common setup}
+
+Events $(t_i, x_i)_{i\ge1}$ with $0 < t_1 < t_2 < \cdots$ and multi-hot marks
+$x_i \in \{0,1\}^K$; a single event may activate several channels, so marks are
+sets. Write $\Hist_t = \sigma\{(t_i,x_i) : t_i < t\}$ and $|x| = \sum_k x_k$.
+Deployed: $K = 62$ channels (LO/CO $\times$ 2 sides $\times$ 10 levels, MO
+$\times$ 2, IS $\times$ 2 $\times$ 10).
+
+A marked point process is specified by its channel intensities
+$\lambda_k(t) \ge 0$, with total $\Lambda(t) = \sum_k \lambda_k(t)$ and
+conditional mark law $p(k \mid \Hist_t) = \lambda_k(t)/\Lambda(t)$.
+The log-likelihood on $[0,T]$ is
+\begin{equation}
+\log\mathcal{L}
+= \sum_i \log \lambda_{k_i}(t_i^-) - \int_0^T \Lambda(u)\,du .
+\label{eq:ll}
+\end{equation}
+
+For simulation by Ogata's thinning we require a \emph{dominating rate}: a
+constant $\ell_+$ with $\Lambda(t) \le \ell_+$ for all $t$ and all histories.
+Both models below supply one in closed form; this is the property that makes
+their rollouts sampleable without an adaptive bound.
+
+\section{S2P2 backbone}
+
+Both models read a continuous-time embedding $u(t) \in \R^H$ produced by a
+stacked diagonal state-space encoder with $L$ layers of $H$ modes. With channel
+embeddings $E \in \R^{K \times d_E}$,
+\begin{align}
+e_i &= \frac{1}{|x_i|}\sum_{k} x_{i,k} E_k, \\
+\Delta^{(\ell)}(u) &= \delta^{(\ell)} \odot
+  \operatorname{clamp}\!\big(\softplus(W^{(\ell)}_{\mathrm{dyn}} u),\, 0.05,\, 20\big), \\
+x^{(\ell)}(t) &= \bar a \odot x^{(\ell)}(t_i^+)
+  + (\mathbf 1 - \bar a) \odot W^{(\ell)}_{\mathrm{in}} u^{(\ell-1)},
+  \qquad \bar a = e^{-\Delta^{(\ell)}(t - t_i)} ,
+\end{align}
+and $u(t)$ is the layer-normalised top-layer output. Decay rates are real and
+strictly positive, so the backbone spans mixtures of real exponentials.
+
+\section{SS2P2}
+
+\subsection{Bounded rate head}
+
+From the embedding $u$, with ceiling parameter $c$ (deployed $c = 6$):
+\begin{equation}
+\boxed{
+\begin{aligned}
+o(u)     &= \sigma(W_o u + b_o) && \in (0,1)^H && \text{gate}\\
+h(u)     &= o(u) \odot \tanh(u) && \in (-1,1)^H && \text{bounded state}\\
+z_{\mathrm{raw}} &= w^{\!\top} h(u) + b && \in \R && \text{unconstrained}\\
+z        &= c - \softplus(c - z_{\mathrm{raw}}) && \le c && \text{one-sided cap}\\
+\lambda(t) &= s\,\softplus(z), \quad s = \softplus(\rho) && &&
+\end{aligned}}
+\label{eq:ss2p2rate}
+\end{equation}
+
+\subsection{Rate-neutral mark head}
+
+The marks read the \emph{same} $u$ through a separate network and are
+normalised:
+\begin{equation}
+\zeta(t) = \mathrm{MLP}(u(t)) \in \R^K, \qquad
+p^*(k \mid t) = \frac{e^{\zeta_k(t)}}{\sum_j e^{\zeta_j(t)}}, \qquad
+\lambda_k(t) = \lambda(t)\, p^*(k \mid t).
+\label{eq:ss2p2mark}
+\end{equation}
+
+\begin{proposition}[Exact dominating rate]
+\label{prop:ss2p2bound}
+$\Lambda(t) = \lambda(t) \le s\,\softplus(c)$ for every $t$ and every history,
+and the bound is attained in the limit $z_{\mathrm{raw}}\to\infty$.
+\end{proposition}
+\begin{proof}
+$\softplus(c - z_{\mathrm{raw}}) > 0$ gives $z < c$; $\softplus$ is increasing,
+so $\lambda = s\,\softplus(z) < s\,\softplus(c)$. As
+$z_{\mathrm{raw}}\to\infty$, $\softplus(c-z_{\mathrm{raw}})\to 0$ and
+$z \to c$. Summing~\eqref{eq:ss2p2mark} over $k$ gives $\Lambda = \lambda$.
+\end{proof}
+
+\begin{proposition}[Rate neutrality]
+\label{prop:ss2p2neutral}
+Let $\theta_m$ be the parameters of the mark MLP. Then
+$\partial \Lambda(t) / \partial \theta_m \equiv 0$.
+\end{proposition}
+\begin{proof}
+$\Lambda = \lambda$ by Proposition~\ref{prop:ss2p2bound}, and $\lambda$
+is a function of $u$ and $(W_o,b_o,w,b,\rho)$ only; $\theta_m$ enters solely
+through $p^*$, which is normalised away in the sum.
+\end{proof}
+
+\begin{remark}[Why the cap is one-sided]
+$z \to z_{\mathrm{raw}}$ as $z_{\mathrm{raw}} \to -\infty$, so the floor is
+exactly $0$ and the quiet regime is undistorted. An earlier symmetric variant
+imposed $\lambda \ge s\,\softplus(b - c)$, which welded the quiet floor to the
+burst scale and produced a quiet-regime deficit. The asymmetry --- ceiling for
+simulation stability, zero floor for prediction --- is deliberate.
+\end{remark}
+
+\section{PCT-S2P2}
+
+The Shi--Cartlidge parallel-per-type construction on a latent linear Hawkes
+backbone: $K$ towers of $L$ diagonalised layers, tower $k$'s top output
+decoding only $\lambda_k$.
+
+\subsection{Per-tower dynamics}
+
+Per layer $\ell$ and tower $k$: eigenvalues
+$\Lambda^{(\ell)}_k \in \C^{P}$ parameterised as
+$\Lambda_{k,r} = -e^{\nu_{k,r}} + i\,\theta_{k,r}$ so $\Real \Lambda < 0$,
+with $\tilde E^{(\ell)}_k \in \C^{P\times H}$,
+$\tilde B^{(\ell)}_k \in \C^{P\times H}$ ($\ell>0$),
+$\tilde C^{(\ell)}_k \in \C^{H\times P}$, $D^{(\ell)}_k \in \R^{H}$.
+A shared low-rank mark embedding $\alpha \in \R^{K\times H}$ supplies impulses.
+
+With $\Delta t_i = t_i - t_{i-1}$, the interval scale taken at the
+\emph{previous} right limit (which keeps the recurrence coefficients
+state-independent),
+\begin{align}
+s_i &= \softplus\!\big(W^{(\ell)}_\delta\, u^{(\ell-1),R}_{i-1}\big), &&\in \R^{P}_{>0}\\
+\bar a_i &= \exp\!\big(s_i \odot \Lambda^{(\ell)}_k\, \Delta t_i\big), \\
+x^{L}_i &= \bar a_i\, x^{R}_{i-1}
+   + (\bar a_i - 1)\,\tilde B^{(\ell)}_k u^{(\ell-1),L}_i,
+   && \text{backward ZOH} \label{eq:zoh}\\
+x^{R}_i &= x^{L}_i + \tilde E^{(\ell)}_k\, \varepsilon_i^{(k)},
+   && \text{event jump}
+\end{align}
+so that $x^R_i = \bar a_i x^R_{i-1} + b_i$ with
+$b_i = (\bar a_i - 1)\tilde B u^L_i + \tilde E \varepsilon_i$ independent of
+$x$, and the sequence is computed by a Hillis--Steele associative scan in
+$O(\log N)$ depth.
+
+The impulse $\varepsilon^{(k)}_i \in \R^H$ selects the cross-excitation regime:
+\begin{equation}
+\varepsilon^{(k)}_i =
+\begin{cases}
+\dfrac{1}{|x_i|}\sum_j x_{i,j}\,\alpha_j & \texttt{impulse\_mode = all}
+  \quad\text{(every event jumps every tower)}\\[6pt]
+x_{i,k}\,\alpha_k & \texttt{impulse\_mode = own}
+  \quad\text{(tower $k$ sees only type $k$)} .
+\end{cases}
+\end{equation}
+
+\subsection{Between-layer mixing}
+
+Layer outputs at both limits are
+$y^{L/R}_k = 2\,\Real\big(\tilde C^{(\ell)}_k x^{L/R}\big) + D^{(\ell)}_k u^{(\ell-1),L/R}$,
+and the towers exchange information \emph{between layers} through a shared map
+$W_{\mathrm{mix}}^{(\ell)} \in \R^{KH \times KH}$:
+\begin{equation}
+u^{(\ell)} = \LN\!\Big(\operatorname{GELU}\big(W^{(\ell)}_{\mathrm{mix}}
+\operatorname{vec}(y)\big) + \operatorname{vec}(u^{(\ell-1)})\Big),
+\qquad L \ge 2 .
+\label{eq:mix}
+\end{equation}
+
+\begin{remark}[Why mixing is not at event instants]
+The original PCT-LSTM makes the post-event state of unit $k$ a function of all
+units' left limits. For an LSTM that is free; here it would make $b_i$ depend
+on $x_{i-1}$, break the linear recurrence and force $O(N)$ sequential
+evaluation. Mixing between layers instead keeps $b_i$ state-independent, so the
+parallel scan survives; cross-tower information arrives at the same timestamp,
+one layer deeper. Within a layer the tower states never see each other, which
+is why $L \ge 2$ is required. The coupled signal enters through the ZOH drift
+term of~\eqref{eq:zoh}, acting continuously across the interval, whereas
+event-instant jumps carry only $\tilde E \varepsilon$.
+\end{remark}
+
+\subsection{Per-type capped head}
+
+Tower $k$'s top-layer left-limit stream $u_k \in \R^H$ decodes only
+$\lambda_k$, through the SS2P2 cap of~\eqref{eq:ss2p2rate} applied per tower
+with shared gate and readout and a per-type scale $s_k$:
+\begin{equation}
+\boxed{\;
+\lambda_k(t) = s_k\,\softplus\!\big(c - \softplus(c - w^{\!\top}(o_k \odot \tanh u_k) - b)\big) + 10^{-9},
+\qquad
+\Lambda(t) = \sum_{k=1}^{K}\lambda_k(t),
+\qquad
+p(k\mid\Hist_t) = \frac{\lambda_k(t)}{\Lambda(t)} . \;}
+\label{eq:pcthead}
+\end{equation}
+
+\begin{proposition}[Exact dominating rate]
+\label{prop:pctbound}
+$\Lambda(t) \le \sum_{k=1}^{K} s_k\,\softplus(c) + K\cdot 10^{-9}$ for all $t$
+and all histories.
+\end{proposition}
+\begin{proof}
+Apply Proposition~\ref{prop:ss2p2bound} per tower and sum.
+\end{proof}
+
+\begin{proposition}[No rate neutrality]
+\label{prop:pctnotneutral}
+There is no non-trivial partition of the parameters into rate-only and
+mark-only blocks: every parameter that changes $p(\cdot\mid\Hist_t)$ also
+changes $\Lambda(t)$, except along directions that rescale all $\lambda_k$
+equally.
+\end{proposition}
+\begin{proof}
+By~\eqref{eq:pcthead}, $p$ and $\Lambda$ are both functions of the same vector
+$(\lambda_1,\dots,\lambda_K)$. Fix $t$ and perturb $\lambda \mapsto \lambda +
+\eta$. Then $\Lambda$ is unchanged iff $\sum_k \eta_k = 0$, and $p$ is
+unchanged iff $\eta \parallel \lambda$. The two conditions hold simultaneously
+only if $\eta = 0$, since $\lambda_k > 0$ implies $\sum_k \lambda_k \ne 0$.
+Hence no perturbation moves $p$ while fixing $\Lambda$ unless it is orthogonal
+to $\mathbf 1$, and no perturbation moves $\Lambda$ while fixing $p$ unless it
+is parallel to $\lambda$; the mark and rate objectives therefore compete for
+the same parameters.
+\end{proof}
+
+\section{Structural comparison}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+& \textbf{SS2P2} & \textbf{PCT-S2P2} \\
+\midrule
+backbone & S2P2, real diagonal, shared $H$ & $K$ towers, complex diagonal LLH \\
+cross-type coupling & implicit in shared latent & towers + between-layer mixer \\
+intensity & $\lambda_k = \Lambda(u)\,p^*_k(u)$ & $\lambda_k$ per tower, $\Lambda = \sum_k \lambda_k$ \\
+dominating rate & $s\,\softplus(c)$ & $\sum_k s_k \softplus(c)$ \\
+rate neutrality & yes (Prop.~\ref{prop:ss2p2neutral}) & \textbf{no} (Prop.~\ref{prop:pctnotneutral}) \\
+destination attribution & not separable & exact ($\lambda_k$ from tower $k$) \\
+scan complexity & $O(\log N)$ & $O(\log N)$ \\
+\bottomrule
+\end{tabular}
+\caption{PCT-S2P2 inherits SS2P2's \emph{cap} but not its \emph{factorisation}.}
+\end{table}
+
+\begin{remark}[Bounded is not anchored]
+Propositions~\ref{prop:ss2p2bound} and~\ref{prop:pctbound} give both models a
+ceiling, which is what exact thinning requires; in $18$ PCT-S2P2 rollouts the
+ceiling was never violated. But a ceiling constrains only how large $\Lambda$
+may become, not where it sits. In SS2P2 the level is held by
+Proposition~\ref{prop:ss2p2neutral}: fitting the marks cannot move it. In
+PCT-S2P2, Proposition~\ref{prop:pctnotneutral} says the mark and time terms
+of~\eqref{eq:ll} compete for the same parameters, and since the mark term
+carries $\sim\!3.5$ nats/event over $62$ classes it dominates. The level is
+then free to drift.
+\end{remark}
+
+\section{Measured consequence}
+
+Twelve epochs, three assets, three impulse regimes, Coinbase 7-day streams.
+Let $u_i = \int_{t_{i-1}}^{t_i}\Lambda(v)\,dv$ be the compensator-rescaled
+gaps, which satisfy $\E[u] = 1$ under a correctly specified model.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrrrr}
+\toprule
+& epoch 1 & epoch 12 & SS2P2-family ref & \\
+\midrule
+validation loss & $-1449$ & $-4214$ & --- & monotone $\downarrow$\\
+$\E[u]$ (target $1.0$) & $1.43$ & $2.76$ & $1.08$ & drifts $\uparrow$\\
+time-rescaling KS & $0.154$ & $0.492$ & $0.213$ & degrades\\
+mark perplexity & $35.5$ & $25.6$ & $24.0$ & improves\\
+\bottomrule
+\end{tabular}
+\caption{PCT-S2P2 on SOL, \texttt{impulse\_mode=all}. The objective improves
+monotonically while the rate calibration degrades: the model is correctly
+trained on a likelihood that does not constrain $\E[u]$. Checkpoint selection
+on validation loss therefore returns the \emph{worst}-calibrated epoch.}
+\end{table}
+
+At rollout, sim-time calibration fitted on the validation split verified to
+within $3.2\%$ but transferred to the test split at $+392\%$; realised rates
+were $3.4$--$12\times$ real across all nine arms, with seed-to-seed spread
+$\le 1.05\times$ (systematic bias, not sampling noise). Prediction, by
+contrast, was unaffected: the ablation ordered
+$\texttt{own} > \texttt{all} > \texttt{ind}$ on all three assets, with
+cross-type coupling worth $27$--$48\%$ in perplexity.
+
+\begin{remark}[The design choice this forces]
+Per-type intensities and structural rate anchoring are incompatible as posed:
+one may keep $\lambda_k$ per tower and add an explicit calibration term to the
+objective (a penalty on the moments of $u$), or restore
+$\lambda_k = \Lambda(u)\,p_k(u)$ and recover
+Proposition~\ref{prop:ss2p2neutral} at the cost of per-type rates. A third
+route factors the head as
+$\lambda_k = \Lambda_{\mathrm{SS2P2}}(u)\cdot\operatorname{softmax}_k(\text{tower outputs})$,
+anchoring the level while the towers shape composition --- but the cross-type
+structure is then compositional rather than in the rate.
+\end{remark}
+
+\end{document}

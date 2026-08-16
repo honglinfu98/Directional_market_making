@@ -1,0 +1,561 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+
+\newtheorem{proposition}{Proposition}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+\newcommand{\Hist}{\mathcal{H}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\C}{\mathbb{C}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Real}{\operatorname{Re}}
+\newcommand{\Imag}{\operatorname{Im}}
+\newcommand{\Rtar}{R_{\mathrm{target}}}
+\newcommand{\softplus}{\operatorname{softplus}}
+\newcommand{\diag}{\operatorname{diag}}
+
+\title{\textbf{LGM-GEN}: a mode-space generator for type-specific\\
+mutual excitation in a marked temporal point process}
+\author{Mathematical specification}
+\date{14 August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+We specify \textsc{lgm-gen}, a marked temporal point process for limit-order-book
+event flow. The model keeps a scalar, \emph{type-blind} linear Hawkes ground
+intensity whose branching ratio and mean rate are pinned in closed form, and
+places all mark-to-mark mutual excitation inside the mark simplex, carried by
+$R$ latent modes with a dense generator $G$ parameterised in its eigenbasis.
+Because the mark distribution is normalised at every $t$, the total intensity is
+algebraically independent of every generator parameter. Three properties follow
+exactly rather than approximately: the counting process retains the type-blind
+law (so the branching ratio, the rate pin and the Fano factor are invariant);
+the log-likelihood remains additively separable (so the transplant property
+holds); and the lag-integrated mark-to-mark transition matrix has a closed form,
+$M=\Real\!\big(U\diag(c)(-\Lambda_G)^{-1}V^{\!\top}\big)$, which is directly
+comparable to an independently measured binned-count regression estimate.
+\end{abstract}
+
+\section{Setup and notation}
+
+Let $(t_i,x_i)_{i\ge1}$ be an event stream with $0<t_1<t_2<\cdots$ and marks
+$x_i\in\{0,1\}^K$, multi-hot indicators over $K$ channels; a single event may
+activate several channels simultaneously, so marks are \emph{sets}. Write
+$\Hist_t=\sigma\{(t_i,x_i):t_i<t\}$ and $|x|=\sum_k x_k$. In the deployed
+configuration $K=62$, indexing $\{\textsf{LO},\textsf{CO}\}\times\{\text{bid},
+\text{ask}\}\times\{L_1,\dots,L_{10}\}$, $\textsf{MO}\times\{\text{bid},
+\text{ask}\}$, and $\textsf{IS}\times\{\text{bid},\text{ask}\}\times
+\{L_1,\dots,L_{10}\}$.
+
+The model factorises the channel intensity into a scalar ground and a
+distribution on the simplex,
+\begin{equation}
+\lambda_k(t)\;=\;\Lambda(t)\,p(k\mid\Hist_t),
+\qquad
+\sum_{k=1}^{K}p(k\mid\Hist_t)=1\quad\text{for all }t .
+\label{eq:factor}
+\end{equation}
+Every structural result below follows from the normalisation
+in~\eqref{eq:factor}.
+
+\section{Ground intensity: scalar, type-blind, pinned}
+
+Fix $M$ timescales and define decayed event counts
+\begin{equation}
+S^m(t)=\sum_{t_i<t}e^{-\beta_m(t-t_i)},
+\qquad
+\beta_m=\softplus(\theta^\delta_m)+\delta_{\min},
+\qquad m=1,\dots,M,
+\end{equation}
+with $\delta_{\min}=5\times10^{-3}$. The ground is linear in these accumulators,
+\begin{equation}
+\boxed{\;\Lambda(t)=\mu_0+\sum_{m=1}^{M}a_m S^m(t),\qquad
+a_m=\softplus(\alpha_m)\ge0 .\;}
+\label{eq:ground}
+\end{equation}
+
+Crucially $S^m$ counts events \emph{without reference to their marks}. The
+ground is therefore type-blind by construction, and two identities hold exactly
+rather than asymptotically:
+\begin{align}
+\text{branching ratio}&& n&=\sum_{m=1}^{M}\frac{a_m}{\beta_m},
+\label{eq:branching}\\[2pt]
+\text{rate pin}&& \mu_0&=\Rtar\,(1-n)
+\;\;\Longrightarrow\;\;
+\E[\Lambda]=\frac{\mu_0}{1-n}=\Rtar .
+\label{eq:pin}
+\end{align}
+Equation~\eqref{eq:branching} is gauge-free: it depends on no normalisation
+convention and is computable in closed form from the parameters alone. Deployed
+values for the SOL instrument are $M=6$, $n=0.9900$, $\Rtar=22.2569$
+events\,s$^{-1}$, and
+$\beta=(100,\,18.206,\,3.3145,\,0.6034,\,0.1099,\,0.02)$\,s$^{-1}$.
+
+\section{Backbone}
+
+A stacked diagonal state-space encoder (S2P2) produces the mark-head input.
+With $L$ layers of $H$ modes and channel embeddings $E\in\R^{K\times d_E}$,
+\begin{align}
+e_i &= \frac{1}{|x_i|}\sum_{k=1}^{K}x_{i,k}E_k,\\
+\Delta^{(\ell)}(u) &= \delta^{(\ell)}\odot
+\operatorname{clamp}\!\big(\softplus(W^{(\ell)}_{\mathrm{dyn}}u),\,0.05,\,20\big),\\
+x^{(\ell)}(t) &= \bar a\odot x^{(\ell)}(t_i^{+})
++(\mathbf{1}-\bar a)\odot W^{(\ell)}_{\mathrm{in}}u^{(\ell-1)},
+\qquad \bar a=e^{-\Delta^{(\ell)}(t-t_i)},
+\end{align}
+and $h(t)\in\R^{H}$ is the layer-normalised top-layer output. Deployed:
+$L=2$, $H=64$, $d_E=64$. All decay rates are real and positive, so the backbone
+spans mixtures of real exponentials; it admits no oscillatory kernel.
+
+\section{Mode-space generator}
+
+This is the component that encodes mutual excitation between marks.
+
+\subsection{Parameterisation}
+
+Let $R$ be the number of latent impact modes, with parameters
+$\theta^\delta,\omega\in\R^{R}$, an emission map $V\in\R^{K\times R}$, and a
+reception map $U=U^{\mathrm{re}}+iU^{\mathrm{im}}$, $U^{\mathrm{re}},
+U^{\mathrm{im}}\in\R^{K\times R}$. Set
+\begin{equation}
+\delta_r=\softplus(\theta^\delta_r)+\delta_{\min}>0,
+\qquad
+\lambda_r=-\delta_r+i\omega_r,
+\qquad
+\Lambda_G=\diag(\lambda_1,\dots,\lambda_R).
+\end{equation}
+
+The object represented is a \emph{dense} generator $G$ on mode space, written in
+its eigenbasis,
+\begin{equation}
+G=P\,\Lambda_G\,P^{-1}.
+\label{eq:eigen}
+\end{equation}
+Only the spectrum $\Lambda_G$ is identifiable: for any invertible $P$ the
+substitution $(V,U)\mapsto(VP^{-\top},UP)$ leaves every observable unchanged.
+We therefore fold $P$ into $V$ and $U$ and never materialise $G$. The model
+\emph{computes} as a complex-diagonal state-space model --- preserving an
+$O(\log N)$ associative scan --- while \emph{representing} a dense generator.
+
+\subsection{Dynamics}
+
+The mode state $z(t)\in\C^{R}$ evolves by the generator between events and jumps
+at events:
+\begin{equation}
+\boxed{\;\dot z(t)=\Lambda_G\,z(t),
+\qquad
+z(t_i^{+})=z(t_i^{-})+V^{\!\top}x_i .\;}
+\label{eq:dynamics}
+\end{equation}
+Equivalently, in closed form and in the recursion actually evaluated,
+\begin{align}
+z(t)&=\sum_{t_i<t}\big(V^{\!\top}x_i\big)\,e^{\lambda(t-t_i)},
+\label{eq:zclosed}\\
+z(t_i^{-})&=e^{\lambda\,\Delta t_i}\Big(z(t_{i-1}^{-})+V^{\!\top}x_{i-1}\Big),
+\qquad \Delta t_i=t_i-t_{i-1},\;\;t_0:=0 .
+\label{eq:zrec}
+\end{align}
+Emission is \emph{sum}-pooled, $V^{\!\top}x_i=\sum_k x_{i,k}V_{k\cdot}$, so an
+event activating $j$ channels emits $j$ rows; set cardinality, which the
+backbone's mean pooling discards, is retained here.
+
+Since $\delta_r>0$ we have $|e^{\lambda_r\Delta t}|=e^{-\delta_r\Delta t}<1$ for
+$\Delta t>0$, so the recursion~\eqref{eq:zrec} is unconditionally stable and
+requires no spectral-radius certificate.
+
+\subsection{Mark head}
+
+Let $s(t)=\mathrm{MLP}(h(t))\in\R^{K}$ be the backbone mark score. The generator
+contributes an additive logit residual, with per-mode conditioning
+$c_r=\delta_r/\Rtar$ chosen so that $c_r\,\E|z_r|=O(1)$ uniformly over
+timescales spanning four decades:
+\begin{align}
+\Delta s(t)&=\Real\!\big(U\,(c\odot z(t))\big)
+=\sum_{r=1}^{R}c_r\Big(U^{\mathrm{re}}_{\cdot r}\Real z_r(t)
+-U^{\mathrm{im}}_{\cdot r}\Imag z_r(t)\Big),
+\label{eq:readout}\\[2pt]
+p(k\mid\Hist_t)&=\frac{\exp\!\big(s_k(t)+\Delta s_k(t)\big)}
+{\sum_{j=1}^{K}\exp\!\big(s_j(t)+\Delta s_j(t)\big)} .
+\label{eq:softmax}
+\end{align}
+
+\section{The per-type intensity, fully expanded}
+
+Substituting~\eqref{eq:zclosed} into~\eqref{eq:readout} and exchanging the order
+of summation shows that the generator residual is itself a Hawkes sum, but in
+logit space:
+\begin{equation}
+\Delta s_k(t)=\sum_{t_i<t}\;\sum_{j=1}^{K}x_{i,j}\,\varphi_{kj}(t-t_i),
+\label{eq:hawkeslogit}
+\end{equation}
+with the pair kernel $\varphi$ of~\eqref{eq:kernel}. The inner sum over $j$
+absorbs set-valued marks: every channel active in event $i$ contributes its own
+row. Combining~\eqref{eq:factor}, \eqref{eq:ground}, \eqref{eq:softmax}
+and~\eqref{eq:hawkeslogit},
+\begin{equation}
+\boxed{\;
+\lambda_k(t)=
+\underbrace{\Big[\Rtar(1-n)+\sum_{m=1}^{M}a_m\!\!\sum_{t_i<t}\!e^{-\beta_m(t-t_i)}\Big]}
+_{\textstyle \text{scalar, type-blind}}
+\cdot
+\frac{\exp\!\Big(s_k(t)+\sum_{t_i<t}\sum_j x_{i,j}\varphi_{kj}(t-t_i)\Big)}
+{\sum_{l=1}^{K}\exp\!\Big(s_l(t)+\sum_{t_i<t}\sum_j x_{i,j}\varphi_{lj}(t-t_i)\Big)} ,\;}
+\label{eq:full}
+\end{equation}
+or equivalently
+\begin{equation}
+\log\lambda_k(t)=
+\log\Big[\Rtar(1-n)+\sum_m a_m S^m(t)\Big]
++s_k(t)
++\sum_{t_i<t}\sum_j x_{i,j}\varphi_{kj}(t-t_i)
+-\log\sum_{l}e^{s_l+\Delta s_l} .
+\end{equation}
+
+\begin{remark}[Reading the form]
+The model is a linear Hawkes process multiplied by a softmax of a linear Hawkes
+process. Both valves are exponential-kernel sums over the past; they differ only
+in that the ground's kernel is untyped and enters the \emph{rate} additively,
+while the generator's is fully typed and enters the \emph{logit} additively. The
+log-normalizer is the sole coupling between the $K$ logits, and it is exactly
+what enforces $\sum_k\lambda_k(t)=\Lambda(t)$ for any $\varphi$ --- so
+Propositions~\ref{prop:indep}--\ref{prop:autonomy} are visible directly
+in~\eqref{eq:full}.
+\end{remark}
+
+\begin{remark}[Contrast with multivariate Hawkes]
+A conventional multivariate Hawkes process would set
+$\lambda_k(t)=\mu_k+\sum_{t_i<t}\sum_j x_{i,j}\varphi^{H}_{kj}(t-t_i)$,
+additive in the rate. There $\varphi^{H}$ \emph{creates} events, so
+$\int\varphi^{H}$ is a branching matrix whose spectral radius governs stability.
+In~\eqref{eq:full}, $\varphi$ only \emph{reallocates} a rate fixed elsewhere;
+consequently the induced effective branching matrix has all column sums equal to
+$n$, and $\|\varphi\|$ carries no stability meaning for the counting process.
+\end{remark}
+
+\begin{remark}[The one non-Hawkes term]
+$s_k(t)=\mathrm{MLP}(h(t))_k$ is nonlinear in the history and is the only term
+preventing~\eqref{eq:full} from being a closed-form Hawkes process. Freezing
+$s\equiv\text{const}$ reduces the mark process to an exactly analysable
+multivariate Hawkes process in logits.
+\end{remark}
+
+\section{Likelihood and structural properties}
+
+For a stream observed on $[0,T]$, equation~\eqref{eq:factor} gives
+\begin{equation}
+\log\mathcal{L}
+=\underbrace{\sum_i\log\Lambda(t_i)-\int_0^T\Lambda(u)\,du}_{\textstyle \ell_{\mathrm{ground}}}
+\;+\;\underbrace{\sum_i\log p(k_i\mid\Hist_{t_i})}_{\textstyle \ell_{\mathrm{mark}}} .
+\label{eq:loglik}
+\end{equation}
+Write $\Theta_{\mathrm{gen}}=(V,U^{\mathrm{re}},U^{\mathrm{im}},
+\theta^\delta,\omega)$ for the generator parameters and
+$\Theta_{\mathrm{gr}}=(\alpha,\theta^\delta_{\mathrm{ground}})$ for the ground.
+
+\begin{proposition}[Intensity independence]
+\label{prop:indep}
+$\partial\Lambda(t)/\partial\Theta_{\mathrm{gen}}\equiv0$ for all $t$.
+\end{proposition}
+\begin{proof}
+By~\eqref{eq:ground}, $\Lambda$ is a function of $(\mu_0,a,\beta)$ and the
+accumulators $S^m$. By construction $S^m$ depends on the event \emph{times}
+only. $\Theta_{\mathrm{gen}}$ enters the model solely through~\eqref{eq:readout}
+and hence through~\eqref{eq:softmax}, which affects $p$ but not $\Lambda$.
+\end{proof}
+
+\begin{proposition}[Count autonomy]
+\label{prop:autonomy}
+The law of the counting process $N(t)=\#\{i:t_i\le t\}$ is independent of
+$\Theta_{\mathrm{gen}}$. Consequently $n$, the pin $\E[\Lambda]=\Rtar$, and the
+Fano factor $F(\Delta)=\operatorname{Var}N_\Delta/\E N_\Delta$ are invariant.
+\end{proposition}
+\begin{proof}
+$N$ is a point process with conditional intensity $\Lambda$, which by
+Proposition~\ref{prop:indep} does not depend on $\Theta_{\mathrm{gen}}$; and
+$\Lambda$ depends on the past only through event times, so the time-marginal
+recursion closes on itself. Hence the finite-dimensional distributions of $N$
+are unchanged. The three quantities are functionals of that law:
+$n$ and $\mu_0$ via~\eqref{eq:branching}--\eqref{eq:pin}, and $F$ via the Cox
+representation $F(\Delta)=1+\operatorname{Var}(\Lambda_\Delta)/\E[\Lambda_\Delta]$.
+\end{proof}
+
+\begin{proposition}[Separability and transplant]
+\label{prop:transplant}
+$\ell_{\mathrm{ground}}$ depends only on $\Theta_{\mathrm{gr}}$ and
+$\ell_{\mathrm{mark}}$ only on $(\Theta_{\mathrm{gen}},\Theta_{\mathrm{backbone}})$.
+Hence $\log\mathcal L$ is additively separable, and replacing
+$\Theta_{\mathrm{gr}}$ by any other ground parameterisation leaves the
+maximiser of $\ell_{\mathrm{mark}}$ unchanged: a mark head fitted under one
+ground is exactly optimal under any other.
+\end{proposition}
+\begin{proof}
+Immediate from~\eqref{eq:loglik} and Proposition~\ref{prop:indep}: no parameter
+appears in both blocks, so $\nabla_{\Theta_{\mathrm{gen}}}\log\mathcal L
+=\nabla_{\Theta_{\mathrm{gen}}}\ell_{\mathrm{mark}}$ and
+$\nabla_{\Theta_{\mathrm{gr}}}\log\mathcal L
+=\nabla_{\Theta_{\mathrm{gr}}}\ell_{\mathrm{ground}}$.
+\end{proof}
+
+\begin{remark}[Why the structure sits in the composition]
+An alternative design multiplies the ground kick by a per-type weight $w_k$,
+giving $n_{\mathrm{eff}}=n\cdot w_k$ locally. Near criticality this has almost no
+admissible range: at $n=0.99$, stability of every type requires
+$\max_k w_k<1/n\approx1.0101$, a $1\%$ budget, whereas regression-identified
+weights span $1.02$--$6.28$ across instruments. Empirically that design inflates
+the Fano factor by $89\%$--$297\%$. Routing inside the simplex has no such
+budget: by Proposition~\ref{prop:autonomy} its cost is exactly zero.
+\end{remark}
+
+\section{Induced mark-to-mark transition matrix}
+
+Because the readout is linear in $z$ and $z$ is linear in past emissions, the
+model induces an explicit kernel on mark space. The logit-space impulse response
+of channel $k$ to a channel-$j$ event $\tau$ seconds earlier is
+\begin{equation}
+\varphi_{kj}(\tau)
+=\Real\!\Big(\sum_{r=1}^{R}U_{kr}\,c_r\,e^{\lambda_r\tau}\,V_{jr}\Big)
+=\sum_{r=1}^{R}c_r\,e^{-\delta_r\tau}
+\Big(U^{\mathrm{re}}_{kr}\cos\omega_r\tau-U^{\mathrm{im}}_{kr}\sin\omega_r\tau\Big)V_{jr}.
+\label{eq:kernel}
+\end{equation}
+Since $\Real\lambda_r<0$, the lag integral converges and
+$\int_0^\infty e^{\Lambda_G\tau}d\tau=(-\Lambda_G)^{-1}$, giving a closed form
+for the lag-integrated transition matrix:
+\begin{equation}
+\boxed{\;
+M=\int_0^\infty\varphi(\tau)\,d\tau
+=\Real\!\Big(U\,\diag(c)\,(-\Lambda_G)^{-1}V^{\!\top}\Big),
+\qquad
+M_{kj}=\Real\sum_{r=1}^{R}\frac{U_{kr}\,c_r\,V_{jr}}{\delta_r-i\omega_r}.\;}
+\label{eq:M}
+\end{equation}
+
+\begin{remark}[Units]
+$M$ is a shift in log-odds, i.e.\ a \emph{composition} operator. It is not a
+branching matrix and its spectral radius carries no stability meaning; it is
+comparable in \emph{pattern}, but not in scale, to an offspring matrix estimated
+by binned-count regression.
+\end{remark}
+
+\begin{remark}[What a dense $G$ buys]
+A real diagonal generator with freely signed $U,V$ already spans mixtures of
+real exponentials, which includes delayed peaks of the form
+$c(e^{-a\tau}-e^{-b\tau})$. The strict additions from $\omega\neq0$ are damped
+oscillation, $e^{-\delta\tau}\cos\omega\tau$, unreachable by a real-positive
+diagonal model; and, more importantly, parameter sharing: one $R\times R$
+spectrum governs all $K^2$ pairs through~\eqref{eq:kernel}, so the kernel is
+constrainable and comparable to measurement, whereas an unstructured backbone
+learns each pair's mixture independently.
+\end{remark}
+
+\section{Parameters and fitted values}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrl}
+\toprule
+Block & Count & Status \\
+\midrule
+$\theta^\delta,\ \omega$ & $2R=64$ & trained \\
+$V$ & $KR=1{,}984$ & trained \\
+$U^{\mathrm{re}},\ U^{\mathrm{im}}$ & $2KR=3{,}968$ & trained \\
+\midrule
+Generator total & $\mathbf{6{,}016}$ & trained \\
+Backbone, mark MLP, ground & $57{,}033$ & frozen \\
+\bottomrule
+\end{tabular}
+\caption{Deployed configuration $K=62$, $R=32$, $H=64$, $L=2$, $M=6$. The
+generator is fitted as a logit residual with $U$ initialised to zero, so the
+model reproduces its donor exactly at initialisation and every reported change
+is attributable to the generator.}
+\end{table}
+
+Fitted on the SOL instrument (seed 3): mode timescales $1/\delta_r\in[0.048,
+113]$\,s; $16$ of $32$ modes oscillatory with periods in $[0.49,675]$\,s;
+$\max_{kj}|M_{kj}|=0.0449$.
+
+\section{Empirical verification of the invariants}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccc}
+\toprule
+Quantity & baseline & \textsc{lgm-gen} & magnitude-based variant \\
+\midrule
+Branching ratio $n$ & $0.990000$ & $0.990000$ & $0.990000$ \\
+Time NLL / event & $-3.0349947$ & $-3.0349947$ & $-3.019058$ \\
+Fano $\Delta$ vs.\ baseline, $1$--$50$\,s & --- & $+1.0\%$ to $+3.2\%$
+  & $+88.7\%$ to $+297.4\%$ \\
+Mark perplexity & $23.9575$ & $23.8665$ & $23.9575$ \\
+$p(\textsf{MO})$ rollout / empirical & $51.7\%$ & $74.0\%$ & $36.8\%$ \\
+\bottomrule
+\end{tabular}
+\caption{SOL, seed 3; Fano averaged over three rollout seeds. Time NLL is
+bit-identical over $1.98\times10^{6}$ held-out events, confirming
+Proposition~\ref{prop:indep} numerically. The residual Fano deviation is
+sampler-stream divergence, not a change of law: altered mark draws consume
+different pseudo-random state and hence shift subsequent time draws. For scale,
+the baseline's own across-seed spread is $14.8\%$--$49.5\%$ over the same
+scales. The magnitude-based variant places the same measured information in the
+ground kick rather than the composition.}
+\end{table}
+
+\section{Summary}
+
+The design principle is a strict division of labour. The ground determines
+\emph{how much} happens and is type-blind, which buys exact control of the
+branching ratio, the mean rate and the dispersion. The generator determines
+\emph{what} happens and is type-specific, expressive enough to carry damped
+oscillation and shared structure across all $K^2$ mark pairs, and --- by
+Propositions~\ref{prop:indep}--\ref{prop:transplant} --- free of any cost to the
+counting process. Mutual excitation is thereby made explicit and measurable
+through~\eqref{eq:M} without spending any of the stability budget that
+criticality leaves.
+
+\appendix
+\section{Step-by-step derivation}
+\label{app:derivation}
+
+Each step below is a single substitution, so the route from the primitives to
+the boxed intensity~\eqref{eq:full} can be checked line by line.
+
+\paragraph{Step 1: the factorisation.}
+The model asserts that the $K$-dimensional intensity splits into a scalar and a
+distribution,
+\[
+\lambda_k(t)=\Lambda(t)\,p(k\mid\Hist_t),
+\qquad
+\sum_{k}p(k\mid\Hist_t)=1 .
+\]
+Two objects require expansion: $\Lambda$ and $p$.
+
+\paragraph{Step 2: ground accumulators.}
+Each past event contributes an exponential at $M$ timescales, \emph{irrespective
+of its mark},
+\[
+S^m(t)=\sum_{t_i<t}e^{-\beta_m(t-t_i)},
+\qquad
+\beta_m=\softplus(\theta^\delta_m)+\delta_{\min}.
+\]
+
+\paragraph{Step 3: the pin.}
+With $\Lambda(t)=\mu_0+\sum_m a_m S^m(t)$, take expectations in stationarity.
+Each accumulator satisfies $\E[S^m]=\E[\Lambda]/\beta_m$, hence
+\[
+\E[\Lambda]=\mu_0+\E[\Lambda]\sum_m\frac{a_m}{\beta_m}=\mu_0+n\,\E[\Lambda]
+\qquad\Longrightarrow\qquad
+\E[\Lambda]=\frac{\mu_0}{1-n}.
+\]
+Choosing $\mu_0=\Rtar(1-n)$ therefore forces $\E[\Lambda]=\Rtar$, and
+\[
+\Lambda(t)=\Rtar(1-n)+\sum_{m=1}^{M}a_m\sum_{t_i<t}e^{-\beta_m(t-t_i)},
+\qquad n=\sum_m\frac{a_m}{\beta_m}.
+\]
+No mark index appears: the first factor is complete and type-blind.
+
+\paragraph{Step 4: generator state.}
+Emission sums the rows of $V$ selected by the mark set,
+$v_r(x_i)=(V^{\!\top}x_i)_r=\sum_j x_{i,j}V_{jr}$, and the state accumulates
+emissions with complex decay $\lambda_r=-\delta_r+i\omega_r$:
+\[
+z_r(t)=\sum_{t_i<t}v_r(x_i)\,e^{\lambda_r(t-t_i)}\in\C .
+\]
+
+\paragraph{Step 5: real and imaginary parts.}
+Writing $\tau_i=t-t_i$ and
+$e^{\lambda_r\tau}=e^{-\delta_r\tau}(\cos\omega_r\tau+i\sin\omega_r\tau)$,
+\[
+\Real z_r(t)=\sum_i v_r(x_i)e^{-\delta_r\tau_i}\cos\omega_r\tau_i,
+\qquad
+\Imag z_r(t)=\sum_i v_r(x_i)e^{-\delta_r\tau_i}\sin\omega_r\tau_i .
+\]
+
+\paragraph{Step 6: readout.}
+\[
+\Delta s_k(t)=\sum_{r=1}^{R}c_r\Big(U^{\mathrm{re}}_{kr}\Real z_r(t)
+-U^{\mathrm{im}}_{kr}\Imag z_r(t)\Big),
+\qquad c_r=\delta_r/\Rtar,
+\]
+which is $\Real\big(U(c\odot z)\big)_k$ with $U=U^{\mathrm{re}}+iU^{\mathrm{im}}$,
+since $\Real[(a+bi)(x+yi)]=ax-by$.
+
+\paragraph{Step 7: exchange the summations.}
+Substituting Step 5 into Step 6 gives
+\[
+\Delta s_k(t)=\sum_r c_r\Big[U^{\mathrm{re}}_{kr}\sum_i v_r(x_i)e^{-\delta_r\tau_i}\cos\omega_r\tau_i
+-U^{\mathrm{im}}_{kr}\sum_i v_r(x_i)e^{-\delta_r\tau_i}\sin\omega_r\tau_i\Big].
+\]
+The sums are finite and $|e^{\lambda_r\tau}|\le1$, so reordering is
+unconditionally valid. Pulling $\sum_i$ outward and expanding
+$v_r=\sum_j x_{i,j}V_{jr}$,
+\[
+\Delta s_k(t)=\sum_{t_i<t}\sum_{j}x_{i,j}
+\underbrace{\Big[\sum_r c_r V_{jr}e^{-\delta_r\tau_i}
+\big(U^{\mathrm{re}}_{kr}\cos\omega_r\tau_i-U^{\mathrm{im}}_{kr}\sin\omega_r\tau_i\big)\Big]}
+_{\textstyle \varphi_{kj}(\tau_i)} .
+\]
+The bracket depends only on $(k,j,\tau)$; it is the pair kernel
+of~\eqref{eq:kernel}, and the result is~\eqref{eq:hawkeslogit} --- a Hawkes sum
+in logit space.
+
+\paragraph{Step 8: mark distribution.}
+$p(k\mid\Hist_t)=\exp(s_k+\Delta s_k)\big/\sum_l\exp(s_l+\Delta s_l)$ with
+$s(t)=\mathrm{MLP}(h(t))$.
+
+\paragraph{Step 9: assemble.}
+Multiplying Step 3 by Step 8 yields the boxed
+expression~\eqref{eq:full}.
+
+\paragraph{Step 10: lag integral in real form.}
+Since $\Real\lambda_r<0$ we have
+$\int_0^\infty e^{\lambda_r\tau}d\tau=(\delta_r-i\omega_r)^{-1}$; rationalising
+$(\delta-i\omega)^{-1}=(\delta+i\omega)/(\delta^2+\omega^2)$ turns~\eqref{eq:M}
+into purely real arithmetic,
+\[
+M_{kj}=\sum_{r=1}^{R}c_r\,V_{jr}\,
+\frac{U^{\mathrm{re}}_{kr}\delta_r-U^{\mathrm{im}}_{kr}\omega_r}
+{\delta_r^{2}+\omega_r^{2}} .
+\]
+
+\paragraph{Step 11: the evaluated recursion.}
+With $\Delta t_i=t_i-t_{i-1}$, $\bar a_r=e^{-\delta_r\Delta t_i}$ and
+$\vartheta_r=\omega_r\Delta t_i$, the state at $t_i^-$ is obtained from that at
+$t_{i-1}^-$ by
+\[
+\begin{aligned}
+\Real z_r&\leftarrow \bar a_r\big[(\Real z_r+v_r)\cos\vartheta_r-\Imag z_r\sin\vartheta_r\big],\\
+\Imag z_r&\leftarrow \bar a_r\big[(\Real z_r+v_r)\sin\vartheta_r+\Imag z_r\cos\vartheta_r\big],
+\end{aligned}
+\]
+i.e.\ $O(R)$ per event with no history retained; this is what the associative
+doubling scan evaluates in $O(\log N)$ depth.
+
+\subsection*{Consistency checks}
+
+\begin{itemize}
+\item \textbf{Normalisation.} $\sum_k\lambda_k(t)=\Lambda(t)\sum_k p_k=\Lambda(t)$
+for any $\varphi$ whatsoever, so Propositions~\ref{prop:indep}
+and~\ref{prop:autonomy} are readable directly off~\eqref{eq:full}.
+\item \textbf{$U\to0$.} Then $\varphi\equiv0$, $\Delta s\equiv0$, and the model
+collapses to its donor exactly --- which is why zero-initialisation reproduces
+the donor bit-for-bit.
+\item \textbf{$\omega\to0$.} Then
+$\varphi_{kj}(\tau)=\sum_r c_r V_{jr}U^{\mathrm{re}}_{kr}e^{-\delta_r\tau}$ and
+$M_{kj}=\sum_r c_r V_{jr}U^{\mathrm{re}}_{kr}/\delta_r$: a pure real-exponential
+mixture. The $\omega$ terms are exactly what a real-diagonal backbone cannot
+express.
+\item \textbf{Dimensions.} $M$ carries units of logit$\cdot$seconds and $\Rtar$
+of events/second, so $\Rtar M$ is dimensionless --- which is why $\Rtar$, and not
+$n$, is the conversion factor between the transition matrix and offspring counts
+in the effective branching matrix $A_{kj}=n\bar p_k+\Rtar\bar p_k(M_{kj}-\langle
+M_{\cdot j}\rangle_{\bar p})$.
+\end{itemize}
+
+\end{document}
